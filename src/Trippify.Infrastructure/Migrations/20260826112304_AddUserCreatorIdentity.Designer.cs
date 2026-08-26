@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Trippify.Infrastructure;
@@ -11,9 +12,11 @@ using Trippify.Infrastructure;
 namespace Trippify.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260826112304_AddUserCreatorIdentity")]
+    partial class AddUserCreatorIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -214,7 +217,6 @@ namespace Trippify.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
-                        .IsUnique()
                         .HasDatabaseName("EmailIndex");
 
                     b.HasIndex("NormalizedUserName")
@@ -227,6 +229,7 @@ namespace Trippify.Infrastructure.Migrations
             modelBuilder.Entity("Trippify.Infrastructure.CreatorProfile", b =>
                 {
                     b.Property<Guid>("UserId")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Biography")
@@ -400,15 +403,6 @@ namespace Trippify.Infrastructure.Migrations
                     b.HasOne("Trippify.Infrastructure.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Trippify.Infrastructure.CreatorProfile", b =>
-                {
-                    b.HasOne("Trippify.Infrastructure.AppUser", null)
-                        .WithOne()
-                        .HasForeignKey("Trippify.Infrastructure.CreatorProfile", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
