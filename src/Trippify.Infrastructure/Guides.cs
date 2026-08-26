@@ -20,6 +20,10 @@ public sealed class TravelGuide
     public string[] Tags { get; set; } = [];
     public int TripDays { get; set; }
     public GuideLifecycle Lifecycle { get; set; } = GuideLifecycle.Draft;
+    public string Slug { get; set; } = string.Empty;
+    public DateTimeOffset? PublishedAt { get; set; }
+    public long? PriceMinorUnits { get; set; }
+    public string? CurrencyCode { get; set; }
     public Guid ConcurrencyToken { get; set; } = Guid.NewGuid();
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -39,7 +43,7 @@ public sealed class GuideConfiguration : IEntityTypeConfiguration<TravelGuide>
 {
     public void Configure(EntityTypeBuilder<TravelGuide> entity)
     {
-        entity.ToTable("travel_guides"); entity.HasKey(x => x.Id); entity.HasQueryFilter(x => x.DeletedAt == null); entity.Property(x => x.Title).HasMaxLength(160); entity.Property(x => x.Subtitle).HasMaxLength(240); entity.Property(x => x.Summary).HasMaxLength(4000); entity.Property(x => x.CountryCode).HasMaxLength(2); entity.Property(x => x.Lifecycle).HasConversion<string>().HasMaxLength(20); entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken(); entity.HasIndex(x => new { x.OwnerUserId, x.UpdatedAt }); entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        entity.ToTable("travel_guides"); entity.HasKey(x => x.Id); entity.HasQueryFilter(x => x.DeletedAt == null); entity.Property(x => x.Title).HasMaxLength(160); entity.Property(x => x.Subtitle).HasMaxLength(240); entity.Property(x => x.Summary).HasMaxLength(4000); entity.Property(x => x.CountryCode).HasMaxLength(2); entity.Property(x => x.Lifecycle).HasConversion<string>().HasMaxLength(20); entity.Property(x => x.Slug).HasMaxLength(180); entity.Property(x => x.CurrencyCode).HasMaxLength(3); entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken(); entity.HasIndex(x => x.Slug).IsUnique().HasFilter("\"DeletedAt\" IS NULL"); entity.HasIndex(x => new { x.OwnerUserId, x.UpdatedAt }); entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 public sealed class GuideDayConfiguration : IEntityTypeConfiguration<GuideDay> { public void Configure(EntityTypeBuilder<GuideDay> e) { e.ToTable("guide_days"); e.HasKey(x => x.Id); e.Property(x => x.Title).HasMaxLength(160); e.HasIndex(x => new { x.GuideId, x.Position }).IsUnique(); e.HasOne<TravelGuide>().WithMany(x => x.Days).HasForeignKey(x => x.GuideId).OnDelete(DeleteBehavior.Cascade); } }

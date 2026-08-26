@@ -40,6 +40,21 @@ abstract interface class AppApi {
     String concurrencyToken,
     List<BudgetLine> lines,
   );
+  Future<PublishResult> publishGuide(
+    String guideId,
+    String concurrencyToken, {
+    int? priceMinorUnits,
+    String? currencyCode,
+  });
+  Future<void> unpublishGuide(String guideId, String concurrencyToken);
+  Future<SearchResult> searchGuides({
+    String? country,
+    String? tag,
+    String? pricing,
+    String? query,
+  });
+  Future<PublicGuide> getPublicGuide(String slug);
+  Future<AuthorPage> getAuthor(String slug);
 }
 
 class GuideSummary {
@@ -123,6 +138,88 @@ class BudgetOverview {
   const BudgetOverview(this.partySize, this.lines);
   final int partySize;
   final List<BudgetLine> lines;
+}
+
+class PublishResult {
+  const PublishResult(this.concurrencyToken, this.slug, this.lifecycle);
+  final String concurrencyToken, slug, lifecycle;
+}
+
+class DiscoveryItem {
+  const DiscoveryItem(
+    this.slug,
+    this.title,
+    this.subtitle,
+    this.summary,
+    this.countryCode,
+    this.tripDays,
+    this.pricing,
+    this.priceMinorUnits,
+    this.currencyCode,
+    this.authorSlug,
+  );
+  final String slug, title, subtitle, summary, countryCode, pricing, authorSlug;
+  final int tripDays;
+  final int? priceMinorUnits;
+  final String? currencyCode;
+}
+
+class SearchResult {
+  const SearchResult(this.total, this.tagFacets, this.items);
+  final int total;
+  final List<String> tagFacets;
+  final List<DiscoveryItem> items;
+}
+
+class PublicGuideNode {
+  const PublicGuideNode(this.name, this.hasDetails);
+  final String name;
+  final bool hasDetails;
+}
+
+class PublicGuideDay {
+  const PublicGuideDay(this.title, this.nodes);
+  final String title;
+  final List<PublicGuideNode> nodes;
+}
+
+class PublicGuide {
+  const PublicGuide(
+    this.slug,
+    this.title,
+    this.subtitle,
+    this.summary,
+    this.countryCode,
+    this.tripDays,
+    this.cities,
+    this.tags,
+    this.pricing,
+    this.authorSlug,
+    this.shareUrl,
+    this.priceMinorUnits,
+    this.currencyCode,
+    this.days,
+  );
+  final String slug, title, subtitle, summary, countryCode, pricing, authorSlug,
+    shareUrl;
+  final List<String> cities, tags;
+  final int tripDays;
+  final int? priceMinorUnits;
+  final String? currencyCode;
+  final List<PublicGuideDay> days;
+}
+
+class AuthorPage {
+  const AuthorPage(
+    this.slug,
+    this.displayName,
+    this.biography,
+    this.travelCountries,
+    this.guides,
+  );
+  final String slug, displayName, biography;
+  final List<String> travelCountries;
+  final List<DiscoveryItem> guides;
 }
 
 class PrivateProfile {
@@ -433,6 +530,134 @@ class ApiClient implements AppApi {
           l['amountPerPersonMinorUnits'] as int,
           l['partyTotalMinorUnits'] as int,
           l['currencyCode'] as String,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<PublishResult> publishGuide(
+    String guideId,
+    String concurrencyToken, {
+    int? priceMinorUnits,
+    String? currencyCode,
+  }) async {
+    final v = await _json('POST', '/api/v1/guides/$guideId/publish', {
+      'concurrencyToken': concurrencyToken,
+      if (priceMinorUnits != null)
+        'pricing': {
+          'priceMinorUnits': priceMinorUnits,
+          'currencyCode': currencyCode,
+        },
+    });
+    return PublishResult(
+      v['concurrencyToken'] as String,
+      v['slug'] as String,
+      v['lifecycle'] as String,
+    );
+  }
+
+  @override
+  Future<void> unpublishGuide(String guideId, String concurrencyToken) =>
+      _json('POST', '/api/v1/guides/$guideId/unpublish', {
+        'concurrencyToken': concurrencyToken,
+      });
+
+  @override
+  Future<SearchResult> searchGuides({
+    String? country,
+    String? tag,
+    String? pricing,
+    String? query,
+  }) async {
+    final params = Uri(
+      queryParameters: {
+        if (country != null && country.isNotEmpty) 'country': country,
+        if (tag != null && tag.isNotEmpty) 'tag': tag,
+        if (pricing != null && pricing.isNotEmpty) 'pricing': pricing,
+        if (query != null && query.isNotEmpty) 'q': query,
+      },
+    ).query;
+    final v = await _json(
+      'GET',
+      '/api/v1/discovery/guides${params.isEmpty ? '' : '?$params'}',
+      null,
+    );
+    return SearchResult(
+      v['total'] as int,
+      (v['tagFacets'] as List)
+          .map((f) => (f as Map<String, dynamic>)['value'] as String)
+          .toList(),
+      (v['items'] as List).map((item) {
+        final i = item as Map<String, dynamic>;
+        return DiscoveryItem(
+          i['slug'] as String,
+          i['title'] as String,
+          i['subtitle'] as String,
+          i['summary'] as String,
+          i['countryCode'] as String,
+          i['tripDays'] as int,
+          i['pricing'] as String,
+          (i['priceMinorUnits'] as num?)?.toInt(),
+          i['currencyCode'] as String?,
+          i['authorSlug'] as String,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<PublicGuide> getPublicGuide(String slug) async {
+    final v = await _json('GET', '/api/v1/discovery/guides/$slug', null);
+    final purchase = v['purchase'] as Map<String, dynamic>?;
+    return PublicGuide(
+      v['slug'] as String,
+      v['title'] as String,
+      (v['subtitle'] ?? '') as String,
+      (v['summary'] ?? '') as String,
+      v['countryCode'] as String,
+      v['tripDays'] as int,
+      ((v['cities'] ?? const []) as List).cast<String>(),
+      ((v['tags'] ?? const []) as List).cast<String>(),
+      v['pricing'] as String,
+      v['authorSlug'] as String,
+      v['shareUrl'] as String,
+      (purchase?['priceMinorUnits'] as num?)?.toInt(),
+      purchase?['currencyCode'] as String?,
+      (v['days'] as List? ?? const []).map((day) {
+        final d = day as Map<String, dynamic>;
+        return PublicGuideDay(
+          d['title'] as String,
+          (d['nodes'] as List? ?? const []).map((node) {
+            final n = node as Map<String, dynamic>;
+            return PublicGuideNode(n['name'] as String, n.containsKey('latitude'));
+          }).toList(),
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<AuthorPage> getAuthor(String slug) async {
+    final v = await _json('GET', '/api/v1/discovery/authors/$slug', null);
+    return AuthorPage(
+      v['slug'] as String,
+      v['displayName'] as String,
+      v['biography'] as String,
+      (v['travelCountries'] as List).cast<String>(),
+      (v['guides'] as List).map((item) {
+        final i = item as Map<String, dynamic>;
+        return DiscoveryItem(
+          i['slug'] as String,
+          i['title'] as String,
+          i['subtitle'] as String,
+          i['summary'] as String,
+          i['countryCode'] as String,
+          i['tripDays'] as int,
+          i['pricing'] as String,
+          (i['priceMinorUnits'] as num?)?.toInt(),
+          i['currencyCode'] as String?,
+          i['authorSlug'] as String,
         );
       }).toList(),
     );

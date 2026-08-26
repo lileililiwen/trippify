@@ -15,3 +15,4 @@ Swagger is at `/swagger`; liveness and readiness are `/health/live` and `/health
 Identity security, privacy projections, and operator controls are documented in [`docs/identity.md`](docs/identity.md).
 Structured guide ownership, concurrency, privacy, and operations are documented in [`docs/guides.md`](docs/guides.md).
 Day routes, transport segments, and party-size budgets are documented in [`docs/planning.md`](docs/planning.md).
+Publication rules, paid previews, and the discovery catalog are documented in [`docs/discovery.md`](docs/discovery.md).

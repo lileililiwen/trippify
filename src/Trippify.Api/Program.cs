@@ -14,6 +14,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("api", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));
 builder.Services.AddEndpointsApiExplorer(); builder.Services.AddSwaggerGen();
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull);
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Postgres") ?? "Host=localhost;Database=trippify;Username=trippify;Password=trippify_dev"));
 builder.Services.AddIdentityApiEndpoints<AppUser>(options => { options.SignIn.RequireConfirmedEmail = true; options.User.RequireUniqueEmail = true; options.Password.RequiredLength = 10; options.Password.RequireNonAlphanumeric = true; options.Lockout.MaxFailedAccessAttempts = 5; }).AddRoles<IdentityRole<Guid>>().AddEntityFrameworkStores<AppDbContext>();
 builder.Services.AddHealthChecks().AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
@@ -27,6 +28,7 @@ app.MapGet("/api/v1/system/protected", () => Results.NoContent()).RequireAuthori
 app.MapIdentity();
 app.MapGuides();
 app.MapPlanning();
+app.MapDiscovery();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
 app.Run();

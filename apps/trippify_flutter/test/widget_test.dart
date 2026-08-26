@@ -4,11 +4,18 @@ import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/main.dart';
 
 class FakeApi implements AppApi {
-  FakeApi(this.result, {this.error, this.routeError, this.guides = const []});
+  FakeApi(
+    this.result, {
+    this.error,
+    this.routeError,
+    this.guides = const [],
+    this.searchResult,
+  });
   final Future<SystemInfo> result;
   final Object? error;
   final Object? routeError;
   final List<GuideSummary> guides;
+  final SearchResult? searchResult;
   @override
   Future<SystemInfo> getSystemInfo() async {
     if (error != null) throw error!;
@@ -93,6 +100,62 @@ class FakeApi implements AppApi {
       GuideDraft('1', title, countryCode, 'token', const ['Osaka', 'Kyoto']);
   @override
   Future<GuideDraft> saveGuideStructure(GuideDraft guide) async => guide;
+
+  @override
+  Future<PublishResult> publishGuide(
+    String guideId,
+    String concurrencyToken, {
+    int? priceMinorUnits,
+    String? currencyCode,
+  }) async =>
+      PublishResult('token2', 'kyoto-temples-walk', 'FreePublic');
+  @override
+  Future<void> unpublishGuide(String guideId, String concurrencyToken) async {}
+  @override
+  Future<SearchResult> searchGuides({
+    String? country,
+    String? tag,
+    String? pricing,
+    String? query,
+  }) async {
+    if (routeError != null) throw routeError!;
+    return searchResult ?? const SearchResult(0, [], []);
+  }
+
+  @override
+  Future<PublicGuide> getPublicGuide(String slug) async {
+    if (routeError != null) throw routeError!;
+    return PublicGuide(
+      slug,
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      const ['Tokyo'],
+      const ['food'],
+      'paid',
+      'author-1',
+      '/guides/$slug',
+      2500,
+      'JPY',
+      [
+        PublicGuideDay('Evening one', [
+          PublicGuideNode('Tower', false),
+          PublicGuideNode('Izakaya', false),
+        ]),
+      ],
+    );
+  }
+
+  @override
+  Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
+    slug,
+    'Aya',
+    'Guides for night owls.',
+    const ['JP'],
+    const [],
+  );
 }
 
 void main() {
@@ -267,5 +330,71 @@ void main() {
       find.text('No guides yet. Create a structured itinerary to plan routes.'),
       findsOneWidget,
     );
+  });
+  testWidgets('discovery shows an accessible empty state', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('No published guides match your search yet.'),
+      findsOneWidget,
+    );
+  });
+  testWidgets('discovery renders results paid preview and author page', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const ['food'], [paid]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tokyo luxury nights'), findsOneWidget);
+    expect(find.text('2500 JPY'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    expect(find.text('Paid preview. Unlock for 2500 JPY.'), findsOneWidget);
+    expect(find.text('Tower'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsWidgets);
+    await tester.tap(find.text('View author'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aya'), findsOneWidget);
+  });
+  testWidgets('discovery exposes an accessible error state', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          routeError: StateError('offline'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    expect(find.text('Discovery is unavailable. Try again later.'), findsOneWidget);
   });
 }

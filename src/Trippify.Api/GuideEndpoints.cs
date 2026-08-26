@@ -21,6 +21,8 @@ public static class GuideEndpoints
         group.MapPut("/{guideId:guid}/structure", ReplaceStructure);
         group.MapPost("/{guideId:guid}/media", AddMedia);
         group.MapPut("/{guideId:guid}/lifecycle", SetLifecycle);
+        group.MapPost("/{guideId:guid}/publish", Publish);
+        group.MapPost("/{guideId:guid}/unpublish", Unpublish);
         group.MapDelete("/{guideId:guid}", Delete);
     }
 
@@ -44,12 +46,12 @@ public static class GuideEndpoints
             if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
         }
         var now = clock.UtcNow;
-        var guide = new TravelGuide { Id = Guid.NewGuid(), OwnerUserId = owner, Title = request.Title.Trim(), Subtitle = request.Subtitle.Trim(), Summary = request.Summary.Trim(), CoverUrl = request.CoverUrl, CountryCode = request.CountryCode.Trim().ToUpperInvariant(), Cities = Normalize(request.Cities, 50), Tags = Normalize(request.Tags, 50), TripDays = request.TripDays, CreatedAt = now, UpdatedAt = now };
+        var guide = new TravelGuide { Id = Guid.NewGuid(), OwnerUserId = owner, Title = request.Title.Trim(), Subtitle = request.Subtitle.Trim(), Summary = request.Summary.Trim(), CoverUrl = request.CoverUrl, CountryCode = request.CountryCode.Trim().ToUpperInvariant(), Cities = Normalize(request.Cities, 50), Tags = Normalize(request.Tags, 50), TripDays = request.TripDays, Slug = await UniqueSlug(db, request.Title), CreatedAt = now, UpdatedAt = now };
         db.TravelGuides.Add(guide); db.GuideAuditEntries.Add(Audit(guide.Id, owner, "created", now));
         if (key.Length > 0) db.GuideCommandReceipts.Add(new GuideCommandReceipt { OwnerUserId = owner, IdempotencyKey = key, Operation = "create", ResourceId = guide.Id, CreatedAt = now });
         await db.SaveChangesAsync();
         GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "create"));
-        return Results.Created($"/api/v1/guides/{guide.Id}", new { guide.Id, guide.ConcurrencyToken });
+        return Results.Created($"/api/v1/guides/{guide.Id}", new { guide.Id, guide.Slug, guide.ConcurrencyToken });
     }
 
     private static async Task<IResult> Get(Guid guideId, ClaimsPrincipal principal, AppDbContext db)
@@ -99,6 +101,54 @@ public static class GuideEndpoints
         var guide = await OwnedGuide(guideId, principal, db).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound(); if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken); guide.DeletedAt = clock.UtcNow; guide.UpdatedAt = clock.UtcNow; guide.ConcurrencyToken = Guid.NewGuid(); db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "deleted", guide.UpdatedAt)); await db.SaveChangesAsync(); return Results.NoContent();
     }
 
+    private static async Task<IResult> Publish(Guid guideId, PublishRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    {
+        var guide = await OwnedGuide(guideId, principal, db).Include(x => x.Days).ThenInclude(x => x.Nodes).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound();
+        if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken);
+        var errors = ValidateReadiness(guide); if (request.Pricing is { } pricing && (pricing.PriceMinorUnits is < 1 or > 1_000_000_000 || pricing.CurrencyCode.Trim().Length != 3)) errors["pricing"] = ["Paid guides require a positive price and three-letter currency."];
+        if (errors.Count > 0) return Results.ValidationProblem(errors);
+        var now = clock.UtcNow;
+        guide.Lifecycle = request.Pricing is null ? GuideLifecycle.FreePublic : GuideLifecycle.Paid;
+        guide.PriceMinorUnits = request.Pricing?.PriceMinorUnits; guide.CurrencyCode = request.Pricing is null ? null : request.Pricing.CurrencyCode.Trim().ToUpperInvariant();
+        guide.PublishedAt = now; Touch(guide, now);
+        db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "published:" + guide.Lifecycle, now));
+        await db.SaveChangesAsync(); GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "publish"));
+        return Results.Ok(new { guide.ConcurrencyToken, guide.Slug, lifecycle = guide.Lifecycle.ToString() });
+    }
+
+    private static async Task<IResult> Unpublish(Guid guideId, [FromBody] ConcurrencyRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    {
+        var guide = await OwnedGuide(guideId, principal, db).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound();
+        if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken);
+        if (guide.Lifecycle is not (GuideLifecycle.FreePublic or GuideLifecycle.Paid or GuideLifecycle.Unlisted)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["lifecycle"] = ["Only published guides can be unpublished."] });
+        guide.Lifecycle = GuideLifecycle.Private; guide.PublishedAt = null; Touch(guide, clock.UtcNow);
+        db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "unpublished", guide.UpdatedAt));
+        await db.SaveChangesAsync(); GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "unpublish"));
+        return Results.Ok(new { guide.ConcurrencyToken });
+    }
+
+    private static Dictionary<string, string[]> ValidateReadiness(TravelGuide guide)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (guide.Summary.Trim().Length == 0) errors["summary"] = ["A summary is required before publishing."];
+        if (guide.Days.Count == 0) errors["days"] = ["At least one day is required before publishing."];
+        else if (guide.Days.Any(x => x.Nodes.Count == 0)) errors["days"] = ["Every day needs at least one place before publishing."];
+        return errors;
+    }
+
+    private static async Task<string> UniqueSlug(AppDbContext db, string title)
+    {
+        var baseSlug = Slugify(title); var candidate = baseSlug; var suffix = 1;
+        while (await db.TravelGuides.IgnoreQueryFilters().AnyAsync(x => x.Slug == candidate)) { candidate = ++suffix > 50 ? $"{baseSlug}-{Guid.NewGuid().ToString("N")[..8]}" : $"{baseSlug}-{suffix}"; }
+        return candidate;
+    }
+    private static string Slugify(string title)
+    {
+        var slug = new string(title.Trim().ToLowerInvariant().Select(x => char.IsAsciiLetterOrDigit(x) ? x : '-').ToArray());
+        while (slug.Contains("--")) slug = slug.Replace("--", "-");
+        slug = slug.Trim('-');
+        return slug.Length switch { 0 => "guide", > 160 => slug[..160].Trim('-'), _ => slug };
+    }
     private static IQueryable<TravelGuide> OwnedGuide(Guid id, ClaimsPrincipal principal, AppDbContext db) { var owner = IdentityEndpoints.CurrentUserId(principal); return db.TravelGuides.Where(x => x.Id == id && x.OwnerUserId == owner); }
     private static Dictionary<string, string[]> ValidateMetadata(GuideMetadataRequest request) { var errors = new Dictionary<string, string[]>(); if (request.Title.Trim().Length is < 3 or > 160) errors["title"] = ["Title must contain 3 to 160 characters."]; if (request.CountryCode.Trim().Length != 2) errors["countryCode"] = ["Country code must contain two characters."]; if (request.TripDays is < 0 or > 60) errors["tripDays"] = ["Trip days must be between 0 and 60."]; return errors; }
     private static bool CoordinatesValid(double? latitude, double? longitude) => latitude is null && longitude is null || latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180;
@@ -110,6 +160,8 @@ public static class GuideEndpoints
 }
 
 public sealed record GuideMetadataRequest(string Title, string Subtitle, string Summary, string? CoverUrl, string CountryCode, string[] Cities, string[] Tags, int TripDays, Guid? ConcurrencyToken = null);
+public sealed record PricingRequest(long PriceMinorUnits, string CurrencyCode);
+public sealed record PublishRequest(Guid ConcurrencyToken, PricingRequest? Pricing = null);
 public sealed record GuideStructureRequest(Guid ConcurrencyToken, List<DayRequest> Days, List<SectionRequest> Sections);
 public sealed record DayRequest(string Title, string Notes, List<NodeRequest> Nodes);
 public sealed record NodeRequest(string Type, string Name, string? Address, double? Latitude, double? Longitude, TimeOnly? ArrivalTime, TimeOnly? DepartureTime, int? StayMinutes, string? TicketInformation, string? ReservationInformation, string? OpeningHours, string Notes);

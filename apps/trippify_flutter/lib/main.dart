@@ -33,6 +33,7 @@ class TrippifyApp extends StatelessWidget {
       '/creator': (_) => PublicCreatorScreen(api: api),
       '/guides': (_) => GuideWorkspaceScreen(api: api),
       '/planning': (_) => PlanningScreen(api: api),
+      '/discover': (_) => DiscoveryScreen(api: api),
     },
   );
 }
@@ -110,6 +111,10 @@ class _SystemScreenState extends State<SystemScreen> {
               TextButton(
                 onPressed: () => Navigator.pushNamed(context, '/planning'),
                 child: const Text('Plan routes & budget'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/discover'),
+                child: const Text('Discover guides'),
               ),
             ],
           );
@@ -469,6 +474,218 @@ class _BudgetSection extends StatelessWidget {
         },
       ),
     ],
+  );
+}
+
+class DiscoveryScreen extends StatefulWidget {
+  const DiscoveryScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<DiscoveryScreen> createState() => _DiscoveryScreenState();
+}
+
+class _DiscoveryScreenState extends State<DiscoveryScreen> {
+  final search = TextEditingController();
+  String pricing = '';
+  late Future<SearchResult> results;
+  @override
+  void initState() {
+    super.initState();
+    results = widget.api.searchGuides();
+  }
+
+  void runSearch() => setState(() {
+    results = widget.api.searchGuides(
+      query: search.text.trim(),
+      pricing: pricing,
+    );
+  });
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Discover guides')),
+    body: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        TextField(
+          controller: search,
+          decoration: InputDecoration(
+            labelText: 'Search guides',
+            suffixIcon: IconButton(
+              tooltip: 'Search',
+              icon: const Icon(Icons.search),
+              onPressed: runSearch,
+            ),
+          ),
+          onSubmitted: (_) => runSearch(),
+        ),
+        DropdownButtonFormField<String>(
+          initialValue: pricing.isEmpty ? '' : pricing,
+          decoration: const InputDecoration(labelText: 'Pricing'),
+          items: const [
+            DropdownMenuItem(value: '', child: Text('All')),
+            DropdownMenuItem(value: 'free', child: Text('Free')),
+            DropdownMenuItem(value: 'paid', child: Text('Paid')),
+          ],
+          onChanged: (value) {
+            pricing = value ?? '';
+            runSearch();
+          },
+        ),
+        FutureBuilder<SearchResult>(
+          future: results,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Discovery is unavailable. Try again later.'),
+              );
+            }
+            final data = snapshot.data!;
+            if (data.items.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No published guides match your search yet.'),
+              );
+            }
+            return Column(
+              children: [
+                for (final item in data.items)
+                  ListTile(
+                    title: Text(item.title),
+                    subtitle: Text(
+                      '${item.countryCode} · ${item.tripDays} days',
+                    ),
+                    trailing: item.pricing == 'paid'
+                        ? Text(
+                            '${item.priceMinorUnits} ${item.currencyCode}',
+                          )
+                        : const Text('Free'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            PublicGuideScreen(api: widget.api, slug: item.slug),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    ),
+  );
+}
+
+class PublicGuideScreen extends StatelessWidget {
+  const PublicGuideScreen({super.key, required this.api, required this.slug});
+  final AppApi api;
+  final String slug;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Guide')),
+    body: FutureBuilder<PublicGuide>(
+      future: api.getPublicGuide(slug),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('Guide not found.'));
+        }
+        final guide = snapshot.data!;
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text(guide.title, style: Theme.of(context).textTheme.titleLarge),
+            Text(guide.subtitle),
+            Text(guide.summary),
+            Text('${guide.countryCode} · ${guide.cities.join(', ')}'),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      AuthorScreen(api: api, slug: guide.authorSlug),
+                ),
+              ),
+              child: const Text('View author'),
+            ),
+            if (guide.pricing == 'paid')
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  'Paid preview. Unlock for '
+                  '${guide.priceMinorUnits} ${guide.currencyCode}.',
+                ),
+              ),
+            for (final day in guide.days) ...[
+              Text(day.title, style: Theme.of(context).textTheme.titleMedium),
+              for (final node in day.nodes)
+                ListTile(
+                  leading: Icon(
+                    node.hasDetails ? Icons.place : Icons.lock_outline,
+                  ),
+                  title: Text(node.name),
+                ),
+            ],
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class AuthorScreen extends StatelessWidget {
+  const AuthorScreen({super.key, required this.api, required this.slug});
+  final AppApi api;
+  final String slug;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Author')),
+    body: FutureBuilder<AuthorPage>(
+      future: api.getAuthor(slug),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('Author not found.'));
+        }
+        final author = snapshot.data!;
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text(author.displayName,
+                style: Theme.of(context).textTheme.titleLarge),
+            Text(author.biography),
+            Text(author.travelCountries.join(', ')),
+            const SizedBox(height: 16),
+            if (author.guides.isEmpty)
+              const Text('No published guides yet.'),
+            for (final guide in author.guides)
+              ListTile(
+                title: Text(guide.title),
+                subtitle: Text('${guide.countryCode} · ${guide.pricing}'),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PublicGuideScreen(api: api, slug: guide.slug),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    ),
   );
 }
 
