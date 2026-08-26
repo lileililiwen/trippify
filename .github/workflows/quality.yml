@@ -1,0 +1,22 @@
+name: quality
+on: [push, pull_request]
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 8.0.x }
+      - run: dotnet restore Trippify.sln
+      - run: dotnet build Trippify.sln --no-restore --configuration Release
+      - run: dotnet test Trippify.sln --no-restore --configuration Release
+  flutter:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/trippify_flutter } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
