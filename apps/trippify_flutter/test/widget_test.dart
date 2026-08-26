@@ -12,6 +12,8 @@ class FakeApi implements AppApi {
     this.searchResult,
     this.unlocked = false,
     this.entitlements = const [],
+    this.favorites = const [],
+    this.trips = const [],
   });
   final Future<SystemInfo> result;
   final Object? error;
@@ -20,6 +22,8 @@ class FakeApi implements AppApi {
   final SearchResult? searchResult;
   final bool unlocked;
   final List<Entitlement> entitlements;
+  final List<Favorite> favorites;
+  final List<Trip> trips;
   @override
   Future<SystemInfo> getSystemInfo() async {
     if (error != null) throw error!;
@@ -130,6 +134,7 @@ class FakeApi implements AppApi {
   Future<PublicGuide> getPublicGuide(String slug) async {
     if (routeError != null) throw routeError!;
     return PublicGuide(
+      'guide-1',
       slug,
       'Tokyo luxury nights',
       'Three refined evenings',
@@ -167,6 +172,28 @@ class FakeApi implements AppApi {
     if (routeError != null) throw routeError!;
     return entitlements;
   }
+
+  @override
+  Future<void> addFavorite(String guideId) async {}
+  @override
+  Future<void> removeFavorite(String guideId) async {}
+  @override
+  Future<List<Favorite>> listFavorites() async => favorites;
+  @override
+  Future<List<Trip>> listTrips() async => trips;
+  @override
+  Future<Trip> createTrip(String guideId, {String? title}) async =>
+      Trip('trip-1', title ?? 'Trip', guideId, null, 'Planning', '');
+  @override
+  Future<Trip> updateTrip(
+    String tripId, {
+    String? notes,
+    String? status,
+    String? title,
+  }) async => Trip(tripId, title ?? 'Trip', null, null, status ?? 'Planning', notes ?? '');
+  @override
+  Future<ForkResult> forkGuide(String guideId) async =>
+      ForkResult('fork-1', 'fork-slug', 'Tokyo luxury nights', guideId, 'Tokyo luxury nights');
 
   @override
   Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
@@ -467,5 +494,50 @@ void main() {
     await tester.tap(find.text('My library'));
     await tester.pumpAndSettle();
     expect(find.text('No purchased guides yet.'), findsOneWidget);
+    expect(find.text('No favorite guides yet.'), findsOneWidget);
+    expect(find.text('No trips saved yet.'), findsOneWidget);
+  });
+  testWidgets('unlocked paid guide exposes fork save and favorite actions', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+          unlocked: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    expect(find.text('Purchased. Full guide unlocked.'), findsOneWidget);
+    await tester.tap(find.text('Fork for editing'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Forked from "Tokyo luxury nights" into a private draft.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Save as a trip'));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved as a trip. Manage it from My library.'), findsOneWidget);
+    await tester.tap(find.text('Favorite'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unfavorite'), findsOneWidget);
   });
 }

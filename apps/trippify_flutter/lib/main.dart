@@ -600,6 +600,7 @@ class PublicGuideScreen extends StatefulWidget {
 class _PublicGuideScreenState extends State<PublicGuideScreen> {
   final discount = TextEditingController();
   String? status;
+  bool favorite = false;
   late Future<PublicGuide> guide = widget.api.getPublicGuide(widget.slug);
 
   Future<void> buy(PublicGuide data) async {
@@ -615,6 +616,40 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
       );
     } catch (_) {
       setState(() => status = 'Payments are unavailable right now.');
+    }
+  }
+
+  Future<void> toggleFavorite(PublicGuide data) async {
+    try {
+      if (favorite) {
+        await widget.api.removeFavorite(data.slug);
+        setState(() => favorite = false);
+      } else {
+        await widget.api.addFavorite(data.slug);
+        setState(() => favorite = true);
+      }
+    } catch (_) {
+      setState(() => status = 'Favorites are unavailable.');
+    }
+  }
+
+  Future<void> fork(PublicGuide data) async {
+    try {
+      final fork = await widget.api.forkGuide(data.slug);
+      setState(
+        () => status = 'Forked from "${fork.sourceTitle}" into a private draft.',
+      );
+    } catch (_) {
+      setState(() => status = 'Cannot fork this guide right now.');
+    }
+  }
+
+  Future<void> saveTrip(PublicGuide data) async {
+    try {
+      await widget.api.createTrip(data.slug, title: data.title);
+      setState(() => status = 'Saved as a trip. Manage it from My library.');
+    } catch (_) {
+      setState(() => status = 'Cannot save this guide as a trip.');
     }
   }
 
@@ -669,6 +704,20 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                 liveRegion: true,
                 child: const Text('Purchased. Full guide unlocked.'),
               ),
+            if (data.unlocked) ...[
+              FilledButton(
+                onPressed: () => fork(data),
+                child: const Text('Fork for editing'),
+              ),
+              OutlinedButton(
+                onPressed: () => saveTrip(data),
+                child: const Text('Save as a trip'),
+              ),
+            ],
+            OutlinedButton(
+              onPressed: () => toggleFavorite(data),
+              child: Text(favorite ? 'Unfavorite' : 'Favorite'),
+            ),
             if (status != null) Semantics(liveRegion: true, child: Text(status!)),
             for (final day in data.days) ...[
               Text(day.title, style: Theme.of(context).textTheme.titleMedium),
@@ -696,49 +745,130 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late Future<List<Entitlement>> entitlements;
+  late Future<List<Favorite>> favorites;
+  late Future<List<Trip>> trips;
   @override
   void initState() {
     super.initState();
     entitlements = widget.api.getEntitlements();
+    favorites = widget.api.listFavorites();
+    trips = widget.api.listTrips();
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('My library')),
-    body: FutureBuilder<List<Entitlement>>(
-      future: entitlements,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return const Center(child: Text('Library is unavailable.'));
-        }
-        final items = snapshot.data!;
-        if (items.isEmpty) {
-          return const Center(
-            child: Text('No purchased guides yet.'),
-          );
-        }
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            for (final item in items)
-              ListTile(
-                title: Text(item.title),
-                subtitle: Text(item.slug),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        PublicGuideScreen(api: widget.api, slug: item.slug),
-                  ),
+    body: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text('Trips', style: Theme.of(context).textTheme.titleMedium),
+        _TripListSection(future: trips),
+        const SizedBox(height: 16),
+        Text('Favorites', style: Theme.of(context).textTheme.titleMedium),
+        _FavoriteSection(future: favorites),
+        const SizedBox(height: 16),
+        Text('Owned guides', style: Theme.of(context).textTheme.titleMedium),
+        _EntitlementList(future: entitlements, api: widget.api),
+      ],
+    ),
+  );
+}
+
+class _TripListSection extends StatelessWidget {
+  const _TripListSection({required this.future});
+  final Future<List<Trip>> future;
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<Trip>>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return const Text('Trips are unavailable.');
+      }
+      final items = snapshot.data!;
+      if (items.isEmpty) {
+        return const Text('No trips saved yet.');
+      }
+      return Column(
+        children: [
+          for (final trip in items)
+            ListTile(
+              title: Text(trip.title),
+              subtitle: Text('${trip.status} · ${trip.notes}'),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _FavoriteSection extends StatelessWidget {
+  const _FavoriteSection({required this.future});
+  final Future<List<Favorite>> future;
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<Favorite>>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return const Text('Favorites are unavailable.');
+      }
+      final items = snapshot.data!;
+      if (items.isEmpty) {
+        return const Text('No favorite guides yet.');
+      }
+      return Column(
+        children: [
+          for (final favorite in items)
+            ListTile(
+              title: Text(favorite.title),
+              subtitle: Text('${favorite.countryCode} · ${favorite.pricing}'),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _EntitlementList extends StatelessWidget {
+  const _EntitlementList({required this.future, required this.api});
+  final Future<List<Entitlement>> future;
+  final AppApi api;
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<Entitlement>>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return const Text('Library is unavailable.');
+      }
+      final items = snapshot.data!;
+      if (items.isEmpty) {
+        return const Text('No purchased guides yet.');
+      }
+      return Column(
+        children: [
+          for (final item in items)
+            ListTile(
+              title: Text(item.title),
+              subtitle: Text(item.slug),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      PublicGuideScreen(api: api, slug: item.slug),
                 ),
               ),
-          ],
-        );
-      },
-    ),
+            ),
+        ],
+      );
+    },
   );
 }
 

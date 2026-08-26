@@ -57,6 +57,18 @@ abstract interface class AppApi {
   Future<AuthorPage> getAuthor(String slug);
   Future<CheckoutSession> checkout(String guideId, {String? discountCode});
   Future<List<Entitlement>> getEntitlements();
+  Future<void> addFavorite(String guideId);
+  Future<void> removeFavorite(String guideId);
+  Future<List<Favorite>> listFavorites();
+  Future<List<Trip>> listTrips();
+  Future<Trip> createTrip(String guideId, {String? title});
+  Future<Trip> updateTrip(
+    String tripId, {
+    String? notes,
+    String? status,
+    String? title,
+  });
+  Future<ForkResult> forkGuide(String guideId);
 }
 
 class GuideSummary {
@@ -187,6 +199,7 @@ class PublicGuideDay {
 
 class PublicGuide {
   const PublicGuide(
+    this.id,
     this.slug,
     this.title,
     this.subtitle,
@@ -203,7 +216,7 @@ class PublicGuide {
     this.unlocked,
     this.days,
   );
-  final String slug, title, subtitle, summary, countryCode, pricing, authorSlug,
+  final String id, slug, title, subtitle, summary, countryCode, pricing, authorSlug,
     shareUrl;
   final List<String> cities, tags;
   final int tripDays;
@@ -227,6 +240,41 @@ class CheckoutSession {
 class Entitlement {
   const Entitlement(this.id, this.guideId, this.slug, this.title);
   final String id, guideId, slug, title;
+}
+
+class Favorite {
+  const Favorite(
+    this.guideId,
+    this.slug,
+    this.title,
+    this.countryCode,
+    this.pricing,
+  );
+  final String guideId, slug, title, countryCode, pricing;
+}
+
+class Trip {
+  const Trip(
+    this.id,
+    this.title,
+    this.sourceGuideId,
+    this.forkedGuideId,
+    this.status,
+    this.notes,
+  );
+  final String id, title, status, notes;
+  final String? sourceGuideId, forkedGuideId;
+}
+
+class ForkResult {
+  const ForkResult(
+    this.id,
+    this.slug,
+    this.title,
+    this.sourceGuideId,
+    this.sourceTitle,
+  );
+  final String id, slug, title, sourceGuideId, sourceTitle;
 }
 
 class AuthorPage {
@@ -631,6 +679,7 @@ class ApiClient implements AppApi {
     final v = await _json('GET', '/api/v1/discovery/guides/$slug', null);
     final purchase = v['purchase'] as Map<String, dynamic>?;
     return PublicGuide(
+      v['id'] as String,
       v['slug'] as String,
       v['title'] as String,
       (v['subtitle'] ?? '') as String,
@@ -711,6 +760,94 @@ class ApiClient implements AppApi {
         v['title'] as String,
       );
     }).toList();
+  }
+
+  @override
+  Future<void> addFavorite(String guideId) =>
+      _request('POST', '/api/v1/library/favorites/$guideId', null);
+  @override
+  Future<void> removeFavorite(String guideId) =>
+      _request('DELETE', '/api/v1/library/favorites/$guideId', null);
+
+  @override
+  Future<List<Favorite>> listFavorites() async {
+    final values = await _request('GET', '/api/v1/library/favorites', null) as List;
+    return values.map((item) {
+      final v = item as Map<String, dynamic>;
+      return Favorite(
+        v['guideId'] as String,
+        v['slug'] as String,
+        v['title'] as String,
+        v['countryCode'] as String,
+        v['pricing'] as String,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<Trip>> listTrips() async {
+    final values = await _request('GET', '/api/v1/library/trips', null) as List;
+    return values.map((item) {
+      final v = item as Map<String, dynamic>;
+      return Trip(
+        v['id'] as String,
+        v['title'] as String,
+        v['sourceGuideId'] as String?,
+        v['forkedGuideId'] as String?,
+        v['status'] as String,
+        (v['notes'] ?? '') as String,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<Trip> createTrip(String guideId, {String? title}) async {
+    final v = await _json('POST', '/api/v1/library/trips', {
+      'guideId': guideId,
+      if (title != null && title.isNotEmpty) 'title': title,
+    });
+    return Trip(
+      v['id'] as String,
+      v['title'] as String,
+      v['sourceGuideId'] as String?,
+      v['forkedGuideId'] as String?,
+      v['status'] as String,
+      (v['notes'] ?? '') as String,
+    );
+  }
+
+  @override
+  Future<Trip> updateTrip(
+    String tripId, {
+    String? notes,
+    String? status,
+    String? title,
+  }) async {
+    final v = await _json('PATCH', '/api/v1/library/trips/$tripId', {
+      if (title != null) 'title': title,
+      if (notes != null) 'notes': notes,
+      if (status != null) 'status': status,
+    });
+    return Trip(
+      v['id'] as String,
+      v['title'] as String,
+      v['sourceGuideId'] as String?,
+      v['forkedGuideId'] as String?,
+      v['status'] as String,
+      (v['notes'] ?? '') as String,
+    );
+  }
+
+  @override
+  Future<ForkResult> forkGuide(String guideId) async {
+    final v = await _json('POST', '/api/v1/library/forks', {'guideId': guideId});
+    return ForkResult(
+      v['id'] as String,
+      v['slug'] as String,
+      v['title'] as String,
+      v['sourceGuideId'] as String,
+      v['sourceTitle'] as String,
+    );
   }
 
   Future<Map<String, dynamic>> _json(
