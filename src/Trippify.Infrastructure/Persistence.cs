@@ -12,6 +12,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<RevokedAccessToken> RevokedAccessTokens => Set<RevokedAccessToken>();
     public DbSet<IdentityAuditEntry> IdentityAuditEntries => Set<IdentityAuditEntry>();
+    public DbSet<TravelGuide> TravelGuides => Set<TravelGuide>();
+    public DbSet<GuideDay> GuideDays => Set<GuideDay>();
+    public DbSet<GuideNode> GuideNodes => Set<GuideNode>();
+    public DbSet<GuideSection> GuideSections => Set<GuideSection>();
+    public DbSet<GuideMedia> GuideMedia => Set<GuideMedia>();
+    public DbSet<GuideAuditEntry> GuideAuditEntries => Set<GuideAuditEntry>();
+    public DbSet<GuideCommandReceipt> GuideCommandReceipts => Set<GuideCommandReceipt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,6 +36,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
         modelBuilder.Entity<CreatorProfile>(entity => { entity.ToTable("creator_profiles"); entity.HasKey(x => x.UserId); entity.HasIndex(x => x.Slug).IsUnique(); entity.Property(x => x.Slug).HasMaxLength(80); entity.Property(x => x.Biography).HasMaxLength(2000); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20); entity.HasOne<AppUser>().WithOne().HasForeignKey<CreatorProfile>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); });
         modelBuilder.Entity<RevokedAccessToken>(entity => { entity.ToTable("revoked_access_tokens"); entity.HasKey(x => x.TokenHash); entity.Property(x => x.TokenHash).HasMaxLength(64); entity.HasIndex(x => x.ExpiresAt); });
         modelBuilder.Entity<IdentityAuditEntry>(entity => { entity.ToTable("identity_audit_entries"); entity.HasKey(x => x.Id); entity.Property(x => x.Action).HasMaxLength(100); entity.Property(x => x.Reason).HasMaxLength(500); entity.HasIndex(x => x.OccurredAt); });
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }
 

@@ -31,6 +31,7 @@ class TrippifyApp extends StatelessWidget {
       '/profile': (_) => ProfileScreen(api: api),
       '/creator/enroll': (_) => CreatorEnrollmentScreen(api: api),
       '/creator': (_) => PublicCreatorScreen(api: api),
+      '/guides': (_) => GuideWorkspaceScreen(api: api),
     },
   );
 }
@@ -101,10 +102,139 @@ class _SystemScreenState extends State<SystemScreen> {
                     Navigator.pushNamed(context, '/creator/enroll'),
                 child: const Text('Become a creator'),
               ),
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/guides'),
+                child: const Text('My guides'),
+              ),
             ],
           );
         },
       ),
+    ),
+  );
+}
+
+class GuideWorkspaceScreen extends StatefulWidget {
+  const GuideWorkspaceScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<GuideWorkspaceScreen> createState() => _GuideWorkspaceScreenState();
+}
+
+class _GuideWorkspaceScreenState extends State<GuideWorkspaceScreen> {
+  late Future<List<GuideSummary>> guides;
+  final title = TextEditingController();
+  final country = TextEditingController(text: 'JP');
+  GuideDraft? draft;
+  String? status;
+  @override
+  void initState() {
+    super.initState();
+    guides = widget.api.getMyGuides();
+  }
+
+  Future<void> create() async {
+    try {
+      final value = await widget.api.createGuide(
+        title.text.trim(),
+        country.text.trim(),
+      );
+      if (mounted) {
+        setState(() {
+          draft = value;
+          status = 'Draft created.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => status = 'Guide access denied or unavailable.');
+      }
+    }
+  }
+
+  Future<void> save() async {
+    try {
+      final value = await widget.api.saveGuideStructure(draft!);
+      if (mounted) {
+        setState(() {
+          draft = value;
+          status = 'Guide saved.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => status = 'Guide changed elsewhere. Reload before saving.',
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('My guides')),
+    body: FutureBuilder<List<GuideSummary>>(
+      future: guides,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text('Guide access denied or unavailable.'),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            if (snapshot.data!.isEmpty)
+              const Text(
+                'No guides yet. Create your first structured itinerary.',
+              ),
+            for (final guide in snapshot.data!)
+              ListTile(
+                title: Text(guide.title),
+                subtitle: Text(
+                  '${guide.countryCode} · ${guide.tripDays} days · ${guide.lifecycle}',
+                ),
+              ),
+            TextField(
+              controller: title,
+              decoration: const InputDecoration(labelText: 'Guide title'),
+            ),
+            TextField(
+              controller: country,
+              decoration: const InputDecoration(labelText: 'Country code'),
+            ),
+            FilledButton(onPressed: create, child: const Text('Create draft')),
+            if (draft != null) ...[
+              Text(
+                'Editing ${draft!.title}',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              for (var i = 0; i < draft!.days.length; i++)
+                ListTile(
+                  title: Text(draft!.days[i]),
+                  trailing: i == 0
+                      ? null
+                      : IconButton(
+                          tooltip: 'Move day up',
+                          icon: const Icon(Icons.arrow_upward),
+                          onPressed: () => setState(
+                            () => draft = draft!.reordered(i, i - 1),
+                          ),
+                        ),
+                ),
+              FilledButton(
+                onPressed: save,
+                child: const Text('Save itinerary'),
+              ),
+            ],
+            if (status != null)
+              Semantics(liveRegion: true, child: Text(status!)),
+          ],
+        );
+      },
     ),
   );
 }

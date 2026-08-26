@@ -13,3 +13,4 @@ Structured travel-guide marketplace using ASP.NET Core 8, PostgreSQL/PostGIS, an
 Swagger is at `/swagger`; liveness and readiness are `/health/live` and `/health/ready`. Production must inject database and provider secrets. Never commit secrets.
 
 Identity security, privacy projections, and operator controls are documented in [`docs/identity.md`](docs/identity.md).
+Structured guide ownership, concurrency, privacy, and operations are documented in [`docs/guides.md`](docs/guides.md).

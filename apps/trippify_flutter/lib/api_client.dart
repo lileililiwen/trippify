@@ -25,6 +25,40 @@ abstract interface class AppApi {
     List<String> countries,
   );
   Future<PublicCreator> getCreator(String slug);
+  Future<List<GuideSummary>> getMyGuides();
+  Future<GuideDraft> createGuide(String title, String countryCode);
+  Future<GuideDraft> saveGuideStructure(GuideDraft guide);
+}
+
+class GuideSummary {
+  const GuideSummary(
+    this.id,
+    this.title,
+    this.countryCode,
+    this.tripDays,
+    this.lifecycle,
+    this.concurrencyToken,
+  );
+  final String id, title, countryCode, lifecycle, concurrencyToken;
+  final int tripDays;
+}
+
+class GuideDraft {
+  const GuideDraft(
+    this.id,
+    this.title,
+    this.countryCode,
+    this.concurrencyToken,
+    this.days,
+  );
+  final String id, title, countryCode, concurrencyToken;
+  final List<String> days;
+  GuideDraft reordered(int oldIndex, int newIndex) {
+    final copy = [...days];
+    final day = copy.removeAt(oldIndex);
+    copy.insert(newIndex, day);
+    return GuideDraft(id, title, countryCode, concurrencyToken, copy);
+  }
 }
 
 class PrivateProfile {
@@ -156,7 +190,71 @@ class ApiClient implements AppApi {
     );
   }
 
+  @override
+  Future<List<GuideSummary>> getMyGuides() async {
+    final values = await _request('GET', '/api/v1/guides', null) as List;
+    return values.map((item) {
+      final v = item as Map<String, dynamic>;
+      return GuideSummary(
+        v['id'] as String,
+        v['title'] as String,
+        v['countryCode'] as String,
+        v['tripDays'] as int,
+        v['lifecycle'] as String,
+        v['concurrencyToken'] as String,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<GuideDraft> createGuide(String title, String countryCode) async {
+    final v = await _json('POST', '/api/v1/guides', {
+      'title': title,
+      'subtitle': '',
+      'summary': '',
+      'coverUrl': null,
+      'countryCode': countryCode,
+      'cities': <String>[],
+      'tags': <String>[],
+      'tripDays': 0,
+    });
+    return GuideDraft(
+      v['id'] as String,
+      title,
+      countryCode,
+      v['concurrencyToken'] as String,
+      const [],
+    );
+  }
+
+  @override
+  Future<GuideDraft> saveGuideStructure(GuideDraft guide) async {
+    final v = await _json('PUT', '/api/v1/guides/${guide.id}/structure', {
+      'concurrencyToken': guide.concurrencyToken,
+      'days': guide.days
+          .map((title) => {'title': title, 'notes': '', 'nodes': <Object>[]})
+          .toList(),
+      'sections': <Object>[],
+    });
+    return GuideDraft(
+      guide.id,
+      guide.title,
+      guide.countryCode,
+      v['concurrencyToken'] as String,
+      guide.days,
+    );
+  }
+
   Future<Map<String, dynamic>> _json(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final value = await _request(method, path, body);
+    return value as Map<String, dynamic>;
+  }
+
+  Future<dynamic> _request(
     String method,
     String path,
     Map<String, dynamic>? body,
@@ -180,7 +278,7 @@ class ApiClient implements AppApi {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('Request failed (${response.statusCode})');
     }
-    if (response.body.isEmpty) return {};
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.body.isEmpty) return <String, dynamic>{};
+    return jsonDecode(response.body);
   }
 }

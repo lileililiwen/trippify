@@ -38,6 +38,17 @@ class FakeApi implements AppApi {
   @override
   Future<PublicCreator> getCreator(String slug) async =>
       PublicCreator(slug, 'Traveler', 'Trips', const ['JP']);
+  @override
+  Future<List<GuideSummary>> getMyGuides() async {
+    if (error != null) throw error!;
+    return const [];
+  }
+
+  @override
+  Future<GuideDraft> createGuide(String title, String countryCode) async =>
+      GuideDraft('1', title, countryCode, 'token', const ['Osaka', 'Kyoto']);
+  @override
+  Future<GuideDraft> saveGuideStructure(GuideDraft guide) async => guide;
 }
 
 void main() {
@@ -121,5 +132,32 @@ void main() {
     expect(find.text('Traveler'), findsOneWidget);
     expect(find.text('Trips'), findsOneWidget);
     expect(find.text('JP'), findsOneWidget);
+  });
+  testWidgets('guide workspace covers empty create reorder and saved states', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My guides'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('No guides yet. Create your first structured itinerary.'),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Guide title'),
+      'Kansai',
+    );
+    await tester.tap(find.text('Create draft'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Move day up'));
+    await tester.tap(find.text('Save itinerary'));
+    await tester.pumpAndSettle();
+    expect(find.text('Guide saved.'), findsOneWidget);
+    expect(find.text('Kyoto'), findsOneWidget);
   });
 }
