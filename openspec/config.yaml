@@ -1,0 +1,15 @@
+schema: spec-driven
+context: |
+  Product: structured travel-guide authoring, marketplace, forking, and hosting platform.
+  Backend: C# on supported LTS ASP.NET Core, modular monolith boundaries, EF Core, PostgreSQL with PostGIS.
+  Client: Flutter for mobile and web; public SEO pages may use an ASP.NET Core-rendered web surface when Flutter web cannot meet crawlability requirements.
+  Architecture: API-first, OpenAPI contracts, background jobs through abstractions, object storage for media, external providers behind adapters.
+  Security: deny by default, resource ownership and role checks server-side, payment webhooks are authoritative, secrets never enter client applications.
+  Delivery: implement changes in roadmap order, one change at a time; each task checkbox is a verification claim.
+rules:
+  proposal:
+    - State dependencies and non-goals explicitly.
+  design:
+    - Record authorization, privacy, failure-mode, and data migration decisions where relevant.
+  tasks:
+    - Keep tasks independently verifiable and include backend, Flutter, migration, and negative-path tests when applicable.
