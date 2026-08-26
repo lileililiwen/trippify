@@ -28,6 +28,18 @@ abstract interface class AppApi {
   Future<List<GuideSummary>> getMyGuides();
   Future<GuideDraft> createGuide(String title, String countryCode);
   Future<GuideDraft> saveGuideStructure(GuideDraft guide);
+  Future<DayRoute> getDayRoute(String guideId, int dayPosition);
+  Future<DayRoute> saveDayRoute(
+    String guideId,
+    int dayPosition,
+    DayRoute route,
+  );
+  Future<BudgetOverview> getBudget(String guideId, int partySize);
+  Future<BudgetOverview> saveBudget(
+    String guideId,
+    String concurrencyToken,
+    List<BudgetLine> lines,
+  );
 }
 
 class GuideSummary {
@@ -59,6 +71,58 @@ class GuideDraft {
     copy.insert(newIndex, day);
     return GuideDraft(id, title, countryCode, concurrencyToken, copy);
   }
+}
+
+class RouteMarker {
+  const RouteMarker(
+    this.nodeId,
+    this.position,
+    this.name,
+    this.latitude,
+    this.longitude,
+  );
+  final String nodeId, name;
+  final int position;
+  final double? latitude, longitude;
+}
+
+class RouteSegment {
+  const RouteSegment(
+    this.position,
+    this.mode,
+    this.label,
+    this.originName,
+    this.destinationName,
+    this.durationMinutes,
+    this.costPerPersonMinorUnits,
+    this.currencyCode,
+  );
+  final int position, durationMinutes, costPerPersonMinorUnits;
+  final String mode, label, originName, destinationName, currencyCode;
+}
+
+class DayRoute {
+  const DayRoute(this.concurrencyToken, this.markers, this.segments);
+  final String concurrencyToken;
+  final List<RouteMarker> markers;
+  final List<RouteSegment> segments;
+}
+
+class BudgetLine {
+  const BudgetLine(
+    this.category,
+    this.amountPerPersonMinorUnits,
+    this.partyTotalMinorUnits,
+    this.currencyCode,
+  );
+  final String category, currencyCode;
+  final int amountPerPersonMinorUnits, partyTotalMinorUnits;
+}
+
+class BudgetOverview {
+  const BudgetOverview(this.partySize, this.lines);
+  final int partySize;
+  final List<BudgetLine> lines;
 }
 
 class PrivateProfile {
@@ -242,6 +306,135 @@ class ApiClient implements AppApi {
       guide.countryCode,
       v['concurrencyToken'] as String,
       guide.days,
+    );
+  }
+
+  @override
+  Future<DayRoute> getDayRoute(String guideId, int dayPosition) async {
+    final v = await _json('GET', '/api/v1/guides/$guideId/days/$dayPosition/route', null);
+    return DayRoute(
+      v['concurrencyToken'] as String,
+      (v['markers'] as List).map((item) {
+        final m = item as Map<String, dynamic>;
+        return RouteMarker(
+          m['nodeId'] as String,
+          m['position'] as int,
+          m['name'] as String,
+          (m['latitude'] as num?)?.toDouble(),
+          (m['longitude'] as num?)?.toDouble(),
+        );
+      }).toList(),
+      (v['segments'] as List).map((item) {
+        final s = item as Map<String, dynamic>;
+        return RouteSegment(
+          s['position'] as int,
+          s['mode'] as String,
+          s['label'] as String,
+          s['originName'] as String,
+          s['destinationName'] as String,
+          s['durationMinutes'] as int,
+          s['costPerPersonMinorUnits'] as int,
+          s['currencyCode'] as String,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<DayRoute> saveDayRoute(
+    String guideId,
+    int dayPosition,
+    DayRoute route,
+  ) async {
+    final v = await _json(
+      'PUT',
+      '/api/v1/guides/$guideId/days/$dayPosition/route',
+      {
+        'concurrencyToken': route.concurrencyToken,
+        'segments': route.segments
+            .map(
+              (s) => {
+                'mode': s.mode,
+                'label': s.label,
+                'originName': s.originName,
+                'destinationName': s.destinationName,
+                'durationMinutes': s.durationMinutes,
+                'costPerPersonMinorUnits': s.costPerPersonMinorUnits,
+                'currencyCode': s.currencyCode,
+              },
+            )
+            .toList(),
+      },
+    );
+    return DayRoute(
+      v['concurrencyToken'] as String,
+      route.markers,
+      (v['segments'] as List).map((item) {
+        final s = item as Map<String, dynamic>;
+        return RouteSegment(
+          s['position'] as int,
+          s['mode'] as String,
+          s['label'] as String,
+          s['originName'] as String,
+          s['destinationName'] as String,
+          s['durationMinutes'] as int,
+          s['costPerPersonMinorUnits'] as int,
+          s['currencyCode'] as String,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<BudgetOverview> getBudget(String guideId, int partySize) async {
+    final v = await _json(
+      'GET',
+      '/api/v1/guides/$guideId/budget?partySize=$partySize',
+      null,
+    );
+    return BudgetOverview(
+      v['partySize'] as int,
+      (v['lines'] as List).map((item) {
+        final l = item as Map<String, dynamic>;
+        return BudgetLine(
+          l['category'] as String,
+          l['amountPerPersonMinorUnits'] as int,
+          l['partyTotalMinorUnits'] as int,
+          l['currencyCode'] as String,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Future<BudgetOverview> saveBudget(
+    String guideId,
+    String concurrencyToken,
+    List<BudgetLine> lines,
+  ) async {
+    final v = await _json('PUT', '/api/v1/guides/$guideId/budget', {
+      'concurrencyToken': concurrencyToken,
+      'entries': lines
+          .map(
+            (l) => {
+              'category': l.category,
+              'amountPerPersonMinorUnits': l.amountPerPersonMinorUnits,
+              'currencyCode': l.currencyCode,
+            },
+          )
+          .toList(),
+    });
+    return BudgetOverview(
+      v['partySize'] as int,
+      (v['lines'] as List).map((item) {
+        final l = item as Map<String, dynamic>;
+        return BudgetLine(
+          l['category'] as String,
+          l['amountPerPersonMinorUnits'] as int,
+          l['partyTotalMinorUnits'] as int,
+          l['currencyCode'] as String,
+        );
+      }).toList(),
     );
   }
 

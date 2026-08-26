@@ -4,9 +4,11 @@ import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/main.dart';
 
 class FakeApi implements AppApi {
-  FakeApi(this.result, {this.error});
+  FakeApi(this.result, {this.error, this.routeError, this.guides = const []});
   final Future<SystemInfo> result;
   final Object? error;
+  final Object? routeError;
+  final List<GuideSummary> guides;
   @override
   Future<SystemInfo> getSystemInfo() async {
     if (error != null) throw error!;
@@ -41,8 +43,50 @@ class FakeApi implements AppApi {
   @override
   Future<List<GuideSummary>> getMyGuides() async {
     if (error != null) throw error!;
-    return const [];
+    return guides;
   }
+
+  @override
+  Future<DayRoute> getDayRoute(String guideId, int dayPosition) async {
+    if (routeError != null) throw routeError!;
+    return DayRoute(
+      'token',
+      const [
+        RouteMarker('n1', 0, 'Osaka Castle', 34.687, 135.526),
+        RouteMarker('n2', 1, 'Nishiki Market', 35.005, 135.765),
+      ],
+      const [
+        RouteSegment(0, 'Train', 'JR line', 'Osaka Castle', 'Nishiki Market', 55, 820, 'JPY'),
+      ],
+    );
+  }
+
+  @override
+  Future<DayRoute> saveDayRoute(
+    String guideId,
+    int dayPosition,
+    DayRoute route,
+  ) async => route;
+  @override
+  Future<BudgetOverview> getBudget(String guideId, int partySize) async {
+    if (routeError != null) throw routeError!;
+    return BudgetOverview(partySize, [
+      BudgetLine(
+        'Transport',
+        5000,
+        5000 * partySize,
+        'JPY',
+      ),
+      const BudgetLine('Food', 3000, 3000, 'JPY'),
+    ]);
+  }
+
+  @override
+  Future<BudgetOverview> saveBudget(
+    String guideId,
+    String concurrencyToken,
+    List<BudgetLine> lines,
+  ) async => BudgetOverview(1, lines);
 
   @override
   Future<GuideDraft> createGuide(String title, String countryCode) async =>
@@ -159,5 +203,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Guide saved.'), findsOneWidget);
     expect(find.text('Kyoto'), findsOneWidget);
+  });
+  testWidgets('planning shows ordered markers segments and party totals', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          guides: [
+            const GuideSummary('1', 'Kansai', 'JP', 2, 'Draft', 'token'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plan routes & budget'));
+    await tester.pumpAndSettle();
+    expect(find.text('Osaka Castle'), findsOneWidget);
+    expect(find.text('Nishiki Market'), findsOneWidget);
+    expect(find.text('Osaka Castle → Nishiki Market'), findsOneWidget);
+    expect(find.text('Train · 55 min'), findsOneWidget);
+    expect(find.text('5000 JPY per person'), findsOneWidget);
+    expect(find.text('3000 JPY'), findsOneWidget);
+    await tester.tap(find.byTooltip('More travelers'));
+    await tester.pumpAndSettle();
+    expect(find.text('10000 JPY'), findsOneWidget);
+  });
+  testWidgets('planning covers empty and denied states accessibly', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          guides: [
+            const GuideSummary('1', 'Kansai', 'JP', 2, 'Draft', 'token'),
+          ],
+          routeError: StateError('denied'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plan routes & budget'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Planning access denied or unavailable.'),
+      findsNWidgets(2),
+    );
+  });
+  testWidgets('planning shows an accessible empty state without guides', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plan routes & budget'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('No guides yet. Create a structured itinerary to plan routes.'),
+      findsOneWidget,
+    );
   });
 }

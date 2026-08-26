@@ -19,6 +19,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<GuideMedia> GuideMedia => Set<GuideMedia>();
     public DbSet<GuideAuditEntry> GuideAuditEntries => Set<GuideAuditEntry>();
     public DbSet<GuideCommandReceipt> GuideCommandReceipts => Set<GuideCommandReceipt>();
+    public DbSet<GuideTransportSegment> GuideTransportSegments => Set<GuideTransportSegment>();
+    public DbSet<GuideBudgetEntry> GuideBudgetEntries => Set<GuideBudgetEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -32,6 +32,7 @@ class TrippifyApp extends StatelessWidget {
       '/creator/enroll': (_) => CreatorEnrollmentScreen(api: api),
       '/creator': (_) => PublicCreatorScreen(api: api),
       '/guides': (_) => GuideWorkspaceScreen(api: api),
+      '/planning': (_) => PlanningScreen(api: api),
     },
   );
 }
@@ -105,6 +106,10 @@ class _SystemScreenState extends State<SystemScreen> {
               TextButton(
                 onPressed: () => Navigator.pushNamed(context, '/guides'),
                 child: const Text('My guides'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/planning'),
+                child: const Text('Plan routes & budget'),
               ),
             ],
           );
@@ -236,6 +241,234 @@ class _GuideWorkspaceScreenState extends State<GuideWorkspaceScreen> {
         );
       },
     ),
+  );
+}
+
+class PlanningScreen extends StatefulWidget {
+  const PlanningScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<PlanningScreen> createState() => _PlanningScreenState();
+}
+
+class _PlanningScreenState extends State<PlanningScreen> {
+  late Future<List<GuideSummary>> guides;
+  GuideSummary? guide;
+  int dayPosition = 0;
+  int partySize = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    guides = widget.api.getMyGuides();
+  }
+
+  void selectGuide(GuideSummary value) => setState(() {
+    guide = value;
+    dayPosition = 0;
+  });
+
+  void selectDay(int value) => setState(() => dayPosition = value);
+
+  void changePartySize(int delta) =>
+      setState(() => partySize = (partySize + delta).clamp(1, 20));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Plan routes & budget')),
+    body: FutureBuilder<List<GuideSummary>>(
+      future: guides,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text('Planning access denied or unavailable.'),
+          );
+        }
+        final options = snapshot.data!;
+        if (options.isEmpty) {
+          return const Center(
+            child: Text(
+              'No guides yet. Create a structured itinerary to plan routes.',
+            ),
+          );
+        }
+        final selected = guide ?? options.first;
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            DropdownButtonFormField<GuideSummary>(
+              initialValue: selected,
+              decoration: const InputDecoration(labelText: 'Guide'),
+              items: [
+                for (final option in options)
+                  DropdownMenuItem(value: option, child: Text(option.title)),
+              ],
+              onChanged: (value) {
+                if (value != null) selectGuide(value);
+              },
+            ),
+            DropdownButtonFormField<int>(
+              initialValue: dayPosition,
+              decoration: const InputDecoration(labelText: 'Day'),
+              items: [
+                for (var i = 0; i < selected.tripDays; i++)
+                  DropdownMenuItem(value: i, child: Text('Day ${i + 1}')),
+              ],
+              onChanged: (value) {
+                if (value != null) selectDay(value);
+              },
+            ),
+            _DayRouteSection(
+              api: widget.api,
+              guideId: selected.id,
+              dayPosition: dayPosition,
+            ),
+            _BudgetSection(
+              api: widget.api,
+              guideId: selected.id,
+              partySize: partySize,
+              onPartySizeChanged: changePartySize,
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class _DayRouteSection extends StatelessWidget {
+  const _DayRouteSection({
+    required this.api,
+    required this.guideId,
+    required this.dayPosition,
+  });
+  final AppApi api;
+  final String guideId;
+  final int dayPosition;
+  @override
+  Widget build(BuildContext context) => FutureBuilder<DayRoute>(
+    future: api.getDayRoute(guideId, dayPosition),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Planning access denied or unavailable.'),
+        );
+      }
+      final route = snapshot.data!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (route.markers.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No markers yet. Add places to this day.'),
+            ),
+          for (final marker in route.markers)
+            ListTile(
+              leading: const Icon(Icons.place_outlined),
+              title: Text(marker.name),
+              subtitle: Text(
+                marker.latitude == null || marker.longitude == null
+                    ? 'No coordinates'
+                    : '${marker.latitude!.toStringAsFixed(4)}, ${marker.longitude!.toStringAsFixed(4)}',
+              ),
+            ),
+          for (final segment in route.segments)
+            ListTile(
+              leading: const Icon(Icons.route_outlined),
+              title: Text('${segment.originName} → ${segment.destinationName}'),
+              subtitle: Text(
+                '${segment.mode} · ${segment.durationMinutes} min',
+              ),
+              trailing: Text(
+                '${segment.costPerPersonMinorUnits} ${segment.currencyCode}',
+              ),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _BudgetSection extends StatelessWidget {
+  const _BudgetSection({
+    required this.api,
+    required this.guideId,
+    required this.partySize,
+    required this.onPartySizeChanged,
+  });
+  final AppApi api;
+  final String guideId;
+  final int partySize;
+  final ValueChanged<int> onPartySizeChanged;
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            tooltip: 'Fewer travelers',
+            onPressed: partySize > 1 ? () => onPartySizeChanged(-1) : null,
+            icon: const Icon(Icons.remove),
+          ),
+          Semantics(label: 'Party size', child: Text('$partySize')),
+          IconButton(
+            tooltip: 'More travelers',
+            onPressed: partySize < 20 ? () => onPartySizeChanged(1) : null,
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
+      FutureBuilder<BudgetOverview>(
+        future: api.getBudget(guideId, partySize),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Planning access denied or unavailable.'),
+            );
+          }
+          final lines = snapshot.data!.lines;
+          if (lines.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No budget entries yet.'),
+            );
+          }
+          return Column(
+            children: [
+              for (final line in lines)
+                ListTile(
+                  title: Text(line.category),
+                  subtitle: Text(
+                    '${line.amountPerPersonMinorUnits} ${line.currencyCode} per person',
+                  ),
+                  trailing: Text(
+                    '${line.partyTotalMinorUnits} ${line.currencyCode}',
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    ],
   );
 }
 

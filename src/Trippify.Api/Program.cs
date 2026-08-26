@@ -26,6 +26,7 @@ app.MapGet("/api/v1/system", () => Results.Ok(new { name = "Trippify", apiVersio
 app.MapGet("/api/v1/system/protected", () => Results.NoContent()).RequireAuthorization();
 app.MapIdentity();
 app.MapGuides();
+app.MapPlanning();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
 app.Run();
