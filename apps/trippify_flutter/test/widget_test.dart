@@ -196,6 +196,24 @@ class FakeApi implements AppApi {
       ForkResult('fork-1', 'fork-slug', 'Tokyo luxury nights', guideId, 'Tokyo luxury nights');
 
   @override
+  Future<List<Review>> listReviews(String guideId) async => const [];
+  @override
+  Future<Review> submitReview(String guideId, int rating, String body) async =>
+      Review('r1', guideId, 'user-1', rating, body, 'Visible', DateTime(2026, 1, 1), null);
+  @override
+  Future<Review> editReview(String reviewId, int rating, String body) async =>
+      Review(reviewId, 'g1', 'user-1', rating, body, 'Visible', DateTime(2026, 1, 1), null);
+  @override
+  Future<void> deleteReview(String reviewId) async {}
+  @override
+  Future<Reply> replyToReview(String reviewId, String body) async =>
+      Reply('rp1', reviewId, 'author-1', body, DateTime(2026, 1, 2));
+  @override
+  Future<void> reportReview(String reviewId, String reason) async {}
+  @override
+  Future<void> submitFeedback(String guideId, String body) async {}
+
+  @override
   Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
     slug,
     'Aya',
@@ -539,5 +557,48 @@ void main() {
     await tester.tap(find.text('Favorite'));
     await tester.pumpAndSettle();
     expect(find.text('Unfavorite'), findsOneWidget);
+  });
+  testWidgets('unlocked guide shows reviews section', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+          unlocked: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    expect(find.text('Purchased. Full guide unlocked.'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Fork for editing'), findsOneWidget);
+    expect(find.text('Reviews'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Submit review'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Your review'),
+      'Great guide!',
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit review'));
+    await tester.pumpAndSettle();
+    expect(find.text('Review submitted.'), findsOneWidget);
   });
 }

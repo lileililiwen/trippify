@@ -601,7 +601,12 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
   final discount = TextEditingController();
   String? status;
   bool favorite = false;
-  late Future<PublicGuide> guide = widget.api.getPublicGuide(widget.slug);
+  late Future<PublicGuide> guide;
+  @override
+  void initState() {
+    super.initState();
+    guide = widget.api.getPublicGuide(widget.slug);
+  }
 
   Future<void> buy(PublicGuide data) async {
     try {
@@ -729,6 +734,16 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                   title: Text(node.name),
                 ),
             ],
+            const SizedBox(height: 16),
+            Text('Reviews', style: Theme.of(context).textTheme.titleMedium),
+            if (data.unlocked)
+              _ReviewSection(
+                api: widget.api,
+                guideId: data.id,
+                onSubmit: () => setState(() {
+                  status = 'Review submitted.';
+                }),
+              ),
           ],
         );
       },
@@ -741,6 +756,113 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _ReviewSection extends StatefulWidget {
+  const _ReviewSection({
+    required this.api,
+    required this.guideId,
+    required this.onSubmit,
+  });
+  final AppApi api;
+  final String guideId;
+  final VoidCallback onSubmit;
+  @override
+  State<_ReviewSection> createState() => _ReviewSectionState();
+}
+
+class _ReviewSectionState extends State<_ReviewSection> {
+  final body = TextEditingController();
+  int rating = 5;
+  String? status;
+  late Future<List<Review>> reviews;
+  @override
+  void initState() {
+    super.initState();
+    reviews = widget.api.listReviews(widget.guideId);
+  }
+  Future<void> submit() async {
+    try {
+      await widget.api.submitReview(
+        widget.guideId,
+        rating,
+        body.text.trim(),
+      );
+      body.clear();
+      setState(() {
+        reviews = widget.api.listReviews(widget.guideId);
+        status = 'Review submitted.';
+      });
+      widget.onSubmit();
+    } catch (_) {
+      setState(() => status = 'Cannot submit review.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TextField(
+        controller: body,
+        decoration: const InputDecoration(labelText: 'Your review'),
+      ),
+      Row(
+        children: [
+          const Text('Rating: '),
+          for (var i = 1; i <= 5; i++)
+            IconButton(
+              icon: Icon(i <= rating ? Icons.star : Icons.star_border),
+              onPressed: () => setState(() => rating = i),
+            ),
+        ],
+      ),
+      FilledButton(
+        onPressed: submit,
+        child: const Text('Submit review'),
+      ),
+      if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+      FutureBuilder<List<Review>>(
+        future: reviews,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const SizedBox.shrink();
+          }
+          final items = snapshot.data!;
+          if (items.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No reviews yet.'),
+            );
+          }
+          return Column(
+            children: [
+              for (final review in items)
+                ListTile(
+                  leading: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < review.rating; i++)
+                        const Icon(Icons.star, size: 16),
+                    ],
+                  ),
+                  title: Text(review.body),
+                  subtitle: review.reply != null
+                      ? Text('Author reply: ${review.reply!.body}')
+                      : null,
+                ),
+            ],
+          );
+        },
+      ),
+    ],
+  );
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {

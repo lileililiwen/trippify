@@ -28,6 +28,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
     public DbSet<GuideFavorite> GuideFavorites => Set<GuideFavorite>();
     public DbSet<UserTrip> UserTrips => Set<UserTrip>();
+    public DbSet<GuideReview> GuideReviews => Set<GuideReview>();
+    public DbSet<ReviewReply> ReviewReplies => Set<ReviewReply>();
+    public DbSet<ReviewReport> ReviewReports => Set<ReviewReport>();
+    public DbSet<ReviewFeedback> ReviewFeedbacks => Set<ReviewFeedback>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

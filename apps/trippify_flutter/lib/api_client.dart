@@ -69,6 +69,13 @@ abstract interface class AppApi {
     String? title,
   });
   Future<ForkResult> forkGuide(String guideId);
+  Future<List<Review>> listReviews(String guideId);
+  Future<Review> submitReview(String guideId, int rating, String body);
+  Future<Review> editReview(String reviewId, int rating, String body);
+  Future<void> deleteReview(String reviewId);
+  Future<Reply> replyToReview(String reviewId, String body);
+  Future<void> reportReview(String reviewId, String reason);
+  Future<void> submitFeedback(String guideId, String body);
 }
 
 class GuideSummary {
@@ -275,6 +282,35 @@ class ForkResult {
     this.sourceTitle,
   );
   final String id, slug, title, sourceGuideId, sourceTitle;
+}
+
+class Review {
+  const Review(
+    this.id,
+    this.guideId,
+    this.userId,
+    this.rating,
+    this.body,
+    this.moderationStatus,
+    this.createdAt,
+    this.reply,
+  );
+  final String id, guideId, userId, body, moderationStatus;
+  final int rating;
+  final DateTime createdAt;
+  final Reply? reply;
+}
+
+class Reply {
+  const Reply(
+    this.id,
+    this.reviewId,
+    this.authorUserId,
+    this.body,
+    this.createdAt,
+  );
+  final String id, reviewId, authorUserId, body;
+  final DateTime createdAt;
 }
 
 class AuthorPage {
@@ -849,6 +885,113 @@ class ApiClient implements AppApi {
       v['sourceTitle'] as String,
     );
   }
+
+  @override
+  Future<List<Review>> listReviews(String guideId) async {
+    final values = await _request('GET', '/api/v1/guides/$guideId/reviews', null) as List;
+    return values.map((item) {
+      final v = item as Map<String, dynamic>;
+      final replyData = v['reply'] as Map<String, dynamic>?;
+      return Review(
+        v['id'] as String,
+        v['guideId'] as String,
+        v['userId'] as String,
+        v['rating'] as int,
+        v['body'] as String,
+        v['moderationStatus'] as String,
+        DateTime.parse(v['createdAt'] as String),
+        replyData != null
+            ? Reply(
+                replyData['id'] as String,
+                replyData['reviewId'] as String,
+                replyData['authorUserId'] as String,
+                replyData['body'] as String,
+                DateTime.parse(replyData['createdAt'] as String),
+              )
+            : null,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<Review> submitReview(String guideId, int rating, String body) async {
+    final v = await _json('POST', '/api/v1/guides/$guideId/reviews', {
+      'rating': rating,
+      'body': body,
+    });
+    final replyData = v['reply'] as Map<String, dynamic>?;
+    return Review(
+      v['id'] as String,
+      v['guideId'] as String,
+      v['userId'] as String,
+      v['rating'] as int,
+      v['body'] as String,
+      v['moderationStatus'] as String,
+      DateTime.parse(v['createdAt'] as String),
+      replyData != null
+          ? Reply(
+              replyData['id'] as String,
+              replyData['reviewId'] as String,
+              replyData['authorUserId'] as String,
+              replyData['body'] as String,
+              DateTime.parse(replyData['createdAt'] as String),
+            )
+          : null,
+    );
+  }
+
+  @override
+  Future<Review> editReview(String reviewId, int rating, String body) async {
+    final v = await _json('PUT', '/api/v1/reviews/$reviewId', {
+      'rating': rating,
+      'body': body,
+    });
+    final replyData = v['reply'] as Map<String, dynamic>?;
+    return Review(
+      v['id'] as String,
+      v['guideId'] as String,
+      v['userId'] as String,
+      v['rating'] as int,
+      v['body'] as String,
+      v['moderationStatus'] as String,
+      DateTime.parse(v['createdAt'] as String),
+      replyData != null
+          ? Reply(
+              replyData['id'] as String,
+              replyData['reviewId'] as String,
+              replyData['authorUserId'] as String,
+              replyData['body'] as String,
+              DateTime.parse(replyData['createdAt'] as String),
+            )
+          : null,
+    );
+  }
+
+  @override
+  Future<void> deleteReview(String reviewId) =>
+      _request('DELETE', '/api/v1/reviews/$reviewId', null);
+
+  @override
+  Future<Reply> replyToReview(String reviewId, String body) async {
+    final v = await _json('POST', '/api/v1/reviews/$reviewId/reply', {
+      'body': body,
+    });
+    return Reply(
+      v['id'] as String,
+      v['reviewId'] as String,
+      v['authorUserId'] as String,
+      v['body'] as String,
+      DateTime.parse(v['createdAt'] as String),
+    );
+  }
+
+  @override
+  Future<void> reportReview(String reviewId, String reason) =>
+      _json('POST', '/api/v1/reviews/$reviewId/reports', {'reason': reason});
+
+  @override
+  Future<void> submitFeedback(String guideId, String body) =>
+      _json('POST', '/api/v1/guides/$guideId/feedback', {'body': body});
 
   Future<Map<String, dynamic>> _json(
     String method,

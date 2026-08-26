@@ -18,3 +18,4 @@ Day routes, transport segments, and party-size budgets are documented in [`docs/
 Publication rules, paid previews, and the discovery catalog are documented in [`docs/discovery.md`](docs/discovery.md).
 Checkout, webhook-confirmed orders, ledgers, and entitlements are documented in [`docs/commerce.md`](docs/commerce.md).
 Favorites, My Trips, and permission-aware forks with provenance are documented in [`docs/library.md`](docs/library.md).
+Verified-purchaser reviews, author replies, moderation, reports, and update feedback are documented in [`docs/reviews.md`](docs/reviews.md).
