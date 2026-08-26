@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Trippify.Infrastructure;
@@ -15,6 +16,13 @@ public static class DiscoveryEndpoints
         group.MapGet("/guides", Search);
         group.MapGet("/guides/{slug}", GetBySlug);
         group.MapGet("/authors/{slug}", Author);
+    }
+
+    private static async Task<bool> HasAccessAsync(TravelGuide guide, ClaimsPrincipal principal, AppDbContext db)
+    {
+        if (principal.Identity?.IsAuthenticated != true) return false;
+        var userId = IdentityEndpoints.CurrentUserId(principal);
+        return guide.OwnerUserId == userId || await db.PurchaseEntitlements.AsNoTracking().AnyAsync(x => x.GuideId == guide.Id && x.UserId == userId && x.RevokedAt == null);
     }
 
     private static async Task<IResult> Search(AppDbContext db, [FromQuery] string? country, [FromQuery] string? city, [FromQuery] string? tag, [FromQuery] string? pricing, [FromQuery] string? q, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -34,17 +42,18 @@ public static class DiscoveryEndpoints
         return Results.Ok(new SearchResult(total, page, pageSize, facets, items.ToArray()));
     }
 
-    private static async Task<IResult> GetBySlug(string slug, AppDbContext db)
+    private static async Task<IResult> GetBySlug(string slug, ClaimsPrincipal principal, AppDbContext db)
     {
         var guide = await db.TravelGuides.AsNoTracking().Where(x => x.Slug == slug && (x.Lifecycle == GuideLifecycle.FreePublic || x.Lifecycle == GuideLifecycle.Paid)).Include(x => x.Days.OrderBy(d => d.Position)).ThenInclude(x => x.Nodes.OrderBy(n => n.Position)).Include(x => x.Sections.OrderBy(s => s.Position)).SingleOrDefaultAsync();
         if (guide is null) return Results.NotFound();
         var authorSlug = await db.CreatorProfiles.AsNoTracking().Where(x => x.UserId == guide.OwnerUserId).Select(x => x.Slug).FirstAsync();
         DiscoveryQueries.Add(1, new KeyValuePair<string, object?>("operation", "detail"));
-        if (guide.Lifecycle == GuideLifecycle.Paid)
+        var unlocked = guide.Lifecycle == GuideLifecycle.FreePublic || await HasAccessAsync(guide, principal, db);
+        if (guide.Lifecycle == GuideLifecycle.Paid && !unlocked)
         {
-            return Results.Ok(new PublicGuideResponse(guide.Id.ToString(), guide.Slug, guide.Title, guide.Subtitle, guide.Summary, guide.CoverUrl, guide.CountryCode, guide.Cities, guide.Tags, guide.TripDays, "paid", authorSlug, $"/guides/{guide.Slug}", new PurchaseMetadata(guide.PriceMinorUnits ?? 0, guide.CurrencyCode ?? ""), guide.Days.OrderBy(d => d.Position).Select(d => new DayOutline(d.Position, d.Title, d.Nodes.OrderBy(n => n.Position).Select(n => new NodeOutline(n.Id, n.Position, n.Type.ToString(), n.Name)).ToArray())).ToArray()));
+            return Results.Ok(new PublicGuideResponse(guide.Id.ToString(), guide.Slug, guide.Title, guide.Subtitle, guide.Summary, guide.CoverUrl, guide.CountryCode, guide.Cities, guide.Tags, guide.TripDays, "paid", authorSlug, $"/guides/{guide.Slug}", new PurchaseMetadata(guide.PriceMinorUnits ?? 0, guide.CurrencyCode ?? ""), false, guide.Days.OrderBy(d => d.Position).Select(d => new DayOutline(d.Position, d.Title, d.Nodes.OrderBy(n => n.Position).Select(n => new NodeOutline(n.Id, n.Position, n.Type.ToString(), n.Name)).ToArray())).ToArray()));
         }
-        return Results.Ok(new PublicGuideResponse(guide.Id.ToString(), guide.Slug, guide.Title, guide.Subtitle, guide.Summary, guide.CoverUrl, guide.CountryCode, guide.Cities, guide.Tags, guide.TripDays, "free", authorSlug, $"/guides/{guide.Slug}", null, guide.Days.OrderBy(d => d.Position).Select(d => new DayOutline(d.Position, d.Title, d.Nodes.OrderBy(n => n.Position).Select(n => new NodeOutline(n.Id, n.Position, n.Type.ToString(), n.Name, n.Address, n.Latitude, n.Longitude, n.ArrivalTime, n.DepartureTime, n.StayMinutes, n.Notes)).ToArray())).ToArray()));
+        return Results.Ok(new PublicGuideResponse(guide.Id.ToString(), guide.Slug, guide.Title, guide.Subtitle, guide.Summary, guide.CoverUrl, guide.CountryCode, guide.Cities, guide.Tags, guide.TripDays, guide.Lifecycle == GuideLifecycle.Paid ? "paid" : "free", authorSlug, $"/guides/{guide.Slug}", null, true, guide.Days.OrderBy(d => d.Position).Select(d => new DayOutline(d.Position, d.Title, d.Nodes.OrderBy(n => n.Position).Select(n => new NodeOutline(n.Id, n.Position, n.Type.ToString(), n.Name, n.Address, n.Latitude, n.Longitude, n.ArrivalTime, n.DepartureTime, n.StayMinutes, n.Notes)).ToArray())).ToArray()));
     }
 
     private static async Task<IResult> Author(string slug, AppDbContext db)
@@ -63,5 +72,5 @@ public sealed record SearchResult(int Total, int Page, int PageSize, FacetCount[
 public sealed record PurchaseMetadata(long PriceMinorUnits, string CurrencyCode);
 public sealed record NodeOutline(Guid Id, int Position, string Type, string Name, string? Address = null, double? Latitude = null, double? Longitude = null, TimeOnly? ArrivalTime = null, TimeOnly? DepartureTime = null, int? StayMinutes = null, string? Notes = null);
 public sealed record DayOutline(int Position, string Title, NodeOutline[] Nodes);
-public sealed record PublicGuideResponse(string Id, string Slug, string Title, string Subtitle, string Summary, string? CoverUrl, string CountryCode, string[] Cities, string[] Tags, int TripDays, string Pricing, string AuthorSlug, string ShareUrl, PurchaseMetadata? Purchase, DayOutline[] Days);
+public sealed record PublicGuideResponse(string Id, string Slug, string Title, string Subtitle, string Summary, string? CoverUrl, string CountryCode, string[] Cities, string[] Tags, int TripDays, string Pricing, string AuthorSlug, string ShareUrl, PurchaseMetadata? Purchase, bool Unlocked, DayOutline[] Days);
 public sealed record AuthorPage(string Slug, string DisplayName, string Biography, string[] TravelCountries, DiscoveryItem[] Guides);

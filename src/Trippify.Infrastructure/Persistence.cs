@@ -21,6 +21,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<GuideCommandReceipt> GuideCommandReceipts => Set<GuideCommandReceipt>();
     public DbSet<GuideTransportSegment> GuideTransportSegments => Set<GuideTransportSegment>();
     public DbSet<GuideBudgetEntry> GuideBudgetEntries => Set<GuideBudgetEntry>();
+    public DbSet<GuideOrder> GuideOrders => Set<GuideOrder>();
+    public DbSet<PurchaseEntitlement> PurchaseEntitlements => Set<PurchaseEntitlement>();
+    public DbSet<CommerceLedgerEntry> CommerceLedgerEntries => Set<CommerceLedgerEntry>();
+    public DbSet<GuideDiscount> GuideDiscounts => Set<GuideDiscount>();
+    public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

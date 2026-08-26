@@ -10,12 +10,16 @@ class FakeApi implements AppApi {
     this.routeError,
     this.guides = const [],
     this.searchResult,
+    this.unlocked = false,
+    this.entitlements = const [],
   });
   final Future<SystemInfo> result;
   final Object? error;
   final Object? routeError;
   final List<GuideSummary> guides;
   final SearchResult? searchResult;
+  final bool unlocked;
+  final List<Entitlement> entitlements;
   @override
   Future<SystemInfo> getSystemInfo() async {
     if (error != null) throw error!;
@@ -139,6 +143,7 @@ class FakeApi implements AppApi {
       '/guides/$slug',
       2500,
       'JPY',
+      unlocked,
       [
         PublicGuideDay('Evening one', [
           PublicGuideNode('Tower', false),
@@ -146,6 +151,21 @@ class FakeApi implements AppApi {
         ]),
       ],
     );
+  }
+
+  @override
+  Future<CheckoutSession> checkout(
+    String guideId, {
+    String? discountCode,
+  }) async {
+    if (routeError != null) throw routeError!;
+    return CheckoutSession('order-1', 'cs_test_1', 1875, 'JPY');
+  }
+
+  @override
+  Future<List<Entitlement>> getEntitlements() async {
+    if (routeError != null) throw routeError!;
+    return entitlements;
   }
 
   @override
@@ -396,5 +416,56 @@ void main() {
     await tester.tap(find.text('Discover guides'));
     await tester.pumpAndSettle();
     expect(find.text('Discovery is unavailable. Try again later.'), findsOneWidget);
+  });
+  testWidgets('paid guide offers buy flow and library lists entitlements', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    expect(find.text('Paid preview. Unlock for 2500 JPY.'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Discount code'),
+      'LAUNCH25',
+    );
+    await tester.tap(find.text('Buy and unlock'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Checkout started. Pay 1875 JPY to unlock.'),
+      findsOneWidget,
+    );
+  });
+  testWidgets('library covers empty and entitled states', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My library'));
+    await tester.pumpAndSettle();
+    expect(find.text('No purchased guides yet.'), findsOneWidget);
   });
 }

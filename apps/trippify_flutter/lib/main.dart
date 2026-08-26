@@ -34,6 +34,7 @@ class TrippifyApp extends StatelessWidget {
       '/guides': (_) => GuideWorkspaceScreen(api: api),
       '/planning': (_) => PlanningScreen(api: api),
       '/discover': (_) => DiscoveryScreen(api: api),
+      '/library': (_) => LibraryScreen(api: api),
     },
   );
 }
@@ -115,6 +116,10 @@ class _SystemScreenState extends State<SystemScreen> {
               TextButton(
                 onPressed: () => Navigator.pushNamed(context, '/discover'),
                 child: const Text('Discover guides'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/library'),
+                child: const Text('My library'),
               ),
             ],
           );
@@ -584,15 +589,40 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   );
 }
 
-class PublicGuideScreen extends StatelessWidget {
+class PublicGuideScreen extends StatefulWidget {
   const PublicGuideScreen({super.key, required this.api, required this.slug});
   final AppApi api;
   final String slug;
   @override
+  State<PublicGuideScreen> createState() => _PublicGuideScreenState();
+}
+
+class _PublicGuideScreenState extends State<PublicGuideScreen> {
+  final discount = TextEditingController();
+  String? status;
+  late Future<PublicGuide> guide = widget.api.getPublicGuide(widget.slug);
+
+  Future<void> buy(PublicGuide data) async {
+    try {
+      final session = await widget.api.checkout(
+        data.slug,
+        discountCode: discount.text.trim(),
+      );
+      setState(
+        () => status =
+            'Checkout started. Pay ${session.amountMinorUnits} '
+            '${session.currencyCode} to unlock.',
+      );
+    } catch (_) {
+      setState(() => status = 'Payments are unavailable right now.');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Guide')),
     body: FutureBuilder<PublicGuide>(
-      future: api.getPublicGuide(slug),
+      future: guide,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -600,33 +630,47 @@ class PublicGuideScreen extends StatelessWidget {
         if (snapshot.hasError) {
           return const Center(child: Text('Guide not found.'));
         }
-        final guide = snapshot.data!;
+        final data = snapshot.data!;
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(guide.title, style: Theme.of(context).textTheme.titleLarge),
-            Text(guide.subtitle),
-            Text(guide.summary),
-            Text('${guide.countryCode} · ${guide.cities.join(', ')}'),
+            Text(data.title, style: Theme.of(context).textTheme.titleLarge),
+            Text(data.subtitle),
+            Text(data.summary),
+            Text('${data.countryCode} · ${data.cities.join(', ')}'),
             TextButton(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
                   builder: (_) =>
-                      AuthorScreen(api: api, slug: guide.authorSlug),
+                      AuthorScreen(api: widget.api, slug: data.authorSlug),
                 ),
               ),
               child: const Text('View author'),
             ),
-            if (guide.pricing == 'paid')
+            if (data.pricing == 'paid' && !data.unlocked) ...[
               Semantics(
                 liveRegion: true,
                 child: Text(
                   'Paid preview. Unlock for '
-                  '${guide.priceMinorUnits} ${guide.currencyCode}.',
+                  '${data.priceMinorUnits} ${data.currencyCode}.',
                 ),
               ),
-            for (final day in guide.days) ...[
+              TextField(
+                controller: discount,
+                decoration: const InputDecoration(labelText: 'Discount code'),
+              ),
+              FilledButton(
+                onPressed: () => buy(data),
+                child: const Text('Buy and unlock'),
+              ),
+            ] else if (data.pricing == 'paid')
+              Semantics(
+                liveRegion: true,
+                child: const Text('Purchased. Full guide unlocked.'),
+              ),
+            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+            for (final day in data.days) ...[
               Text(day.title, style: Theme.of(context).textTheme.titleMedium),
               for (final node in day.nodes)
                 ListTile(
@@ -636,6 +680,61 @@ class PublicGuideScreen extends StatelessWidget {
                   title: Text(node.name),
                 ),
             ],
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class LibraryScreen extends StatefulWidget {
+  const LibraryScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends State<LibraryScreen> {
+  late Future<List<Entitlement>> entitlements;
+  @override
+  void initState() {
+    super.initState();
+    entitlements = widget.api.getEntitlements();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('My library')),
+    body: FutureBuilder<List<Entitlement>>(
+      future: entitlements,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('Library is unavailable.'));
+        }
+        final items = snapshot.data!;
+        if (items.isEmpty) {
+          return const Center(
+            child: Text('No purchased guides yet.'),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            for (final item in items)
+              ListTile(
+                title: Text(item.title),
+                subtitle: Text(item.slug),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PublicGuideScreen(api: widget.api, slug: item.slug),
+                  ),
+                ),
+              ),
           ],
         );
       },

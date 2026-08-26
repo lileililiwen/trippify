@@ -55,6 +55,8 @@ abstract interface class AppApi {
   });
   Future<PublicGuide> getPublicGuide(String slug);
   Future<AuthorPage> getAuthor(String slug);
+  Future<CheckoutSession> checkout(String guideId, {String? discountCode});
+  Future<List<Entitlement>> getEntitlements();
 }
 
 class GuideSummary {
@@ -198,6 +200,7 @@ class PublicGuide {
     this.shareUrl,
     this.priceMinorUnits,
     this.currencyCode,
+    this.unlocked,
     this.days,
   );
   final String slug, title, subtitle, summary, countryCode, pricing, authorSlug,
@@ -206,7 +209,24 @@ class PublicGuide {
   final int tripDays;
   final int? priceMinorUnits;
   final String? currencyCode;
+  final bool unlocked;
   final List<PublicGuideDay> days;
+}
+
+class CheckoutSession {
+  const CheckoutSession(
+    this.orderId,
+    this.checkoutReference,
+    this.amountMinorUnits,
+    this.currencyCode,
+  );
+  final String orderId, checkoutReference, currencyCode;
+  final int amountMinorUnits;
+}
+
+class Entitlement {
+  const Entitlement(this.id, this.guideId, this.slug, this.title);
+  final String id, guideId, slug, title;
 }
 
 class AuthorPage {
@@ -624,6 +644,7 @@ class ApiClient implements AppApi {
       v['shareUrl'] as String,
       (purchase?['priceMinorUnits'] as num?)?.toInt(),
       purchase?['currencyCode'] as String?,
+      v['unlocked'] as bool? ?? false,
       (v['days'] as List? ?? const []).map((day) {
         final d = day as Map<String, dynamic>;
         return PublicGuideDay(
@@ -661,6 +682,35 @@ class ApiClient implements AppApi {
         );
       }).toList(),
     );
+  }
+
+  @override
+  Future<CheckoutSession> checkout(String guideId, {String? discountCode}) async {
+    final v = await _json('POST', '/api/v1/commerce/checkout', {
+      'guideId': guideId,
+      if (discountCode != null && discountCode.isNotEmpty)
+        'discountCode': discountCode,
+    });
+    return CheckoutSession(
+      v['orderId'] as String,
+      v['checkoutReference'] as String,
+      v['amountMinorUnits'] as int,
+      v['currencyCode'] as String,
+    );
+  }
+
+  @override
+  Future<List<Entitlement>> getEntitlements() async {
+    final values = await _request('GET', '/api/v1/commerce/entitlements', null) as List;
+    return values.map((item) {
+      final v = item as Map<String, dynamic>;
+      return Entitlement(
+        v['id'] as String,
+        v['guideId'] as String,
+        v['slug'] as String,
+        v['title'] as String,
+      );
+    }).toList();
   }
 
   Future<Map<String, dynamic>> _json(

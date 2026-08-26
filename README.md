@@ -16,3 +16,4 @@ Identity security, privacy projections, and operator controls are documented in 
 Structured guide ownership, concurrency, privacy, and operations are documented in [`docs/guides.md`](docs/guides.md).
 Day routes, transport segments, and party-size budgets are documented in [`docs/planning.md`](docs/planning.md).
 Publication rules, paid previews, and the discovery catalog are documented in [`docs/discovery.md`](docs/discovery.md).
+Checkout, webhook-confirmed orders, ledgers, and entitlements are documented in [`docs/commerce.md`](docs/commerce.md).
