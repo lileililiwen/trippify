@@ -39,6 +39,7 @@ app.MapVersioning();
 app.MapPlugins();
 app.MapManagedSaas();
 app.MapAssistedImport();
+app.MapCommercialRemixes();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
 app.Run();

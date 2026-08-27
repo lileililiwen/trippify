@@ -53,6 +53,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<ImportDraft> ImportDrafts => Set<ImportDraft>();
     public DbSet<Translation> Translations => Set<Translation>();
     public DbSet<AiQuotaUsage> AiQuotaUsages => Set<AiQuotaUsage>();
+    public DbSet<LicensePolicy> LicensePolicies => Set<LicensePolicy>();
+    public DbSet<RemixAncestry> RemixAncestries => Set<RemixAncestry>();
+    public DbSet<RemixApproval> RemixApprovals => Set<RemixApproval>();
+    public DbSet<RevenueShare> RevenueShares => Set<RevenueShare>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -363,6 +363,39 @@ class FakeApi implements AppApi {
       Translation('t1', sourceDraftId, locale, body, 'Linked', DateTime(2026, 1, 1), null);
   @override
   Future<List<QuotaRow>> listMyAiQuotas() async => const [];
+  @override
+  Future<List<LicensePolicy>> listMyLicensePolicies() async => const [];
+  @override
+  Future<LicensePolicy> upsertMyLicensePolicy({
+    required String slug,
+    String? displayName,
+    required bool allowCommercial,
+    required bool requireApproval,
+    required int royaltyPercent,
+  }) async =>
+      LicensePolicy('p1', 'u1', slug, displayName ?? slug, allowCommercial, requireApproval, royaltyPercent, DateTime(2026, 1, 1), DateTime(2026, 1, 1));
+  @override
+  Future<List<LicensePolicy>> listCreatorLicensePolicies(String slug) async => const [];
+  @override
+  Future<RemixAncestry> declareRemixAncestry({
+    required String childGuideId,
+    required String parentGuideId,
+    required String licensePolicyId,
+    String? attributionJson,
+  }) async =>
+      RemixAncestry('a1', childGuideId, parentGuideId, licensePolicyId, '{}', 'Pending', DateTime(2026, 1, 1), null);
+  @override
+  Future<RemixAncestry> getGuideAncestry(String guideId) async =>
+      RemixAncestry('a1', guideId, 'parent', 'policy', '{}', 'Pending', DateTime(2026, 1, 1), null);
+  @override
+  Future<List<RemixAncestry>> listApprovalQueue() async => const [];
+  @override
+  Future<RemixAncestry> decideRemixApproval({
+    required String ancestryId,
+    required String decision,
+    String? reason,
+  }) async =>
+      RemixAncestry(ancestryId, 'child', 'parent', 'policy', '{}', decision, DateTime(2026, 1, 1), DateTime(2026, 1, 1));
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -1001,5 +1034,20 @@ void main() {
     expect(find.text('Submit text import'), findsOneWidget);
     expect(find.text('Submit object import'), findsOneWidget);
     expect(find.text('Quotas'), findsOneWidget);
+  });
+  testWidgets('license panel screen renders empty state and create default action', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('License policies'));
+    await tester.pumpAndSettle();
+    expect(find.text('License policies'), findsOneWidget);
+    expect(find.text('No license policies yet.'), findsOneWidget);
+    expect(find.text('Create default license'), findsOneWidget);
   });
 }

@@ -42,6 +42,7 @@ class TrippifyApp extends StatelessWidget {
       '/plugins': (_) => PluginCatalogScreen(api: api),
       '/tenant': (_) => TenantDashboardScreen(api: api),
       '/assisted-import': (_) => AssistedImportScreen(api: api),
+      '/license-panel': (_) => LicensePanelScreen(api: api),
     },
   );
 }
@@ -192,6 +193,15 @@ TextButton(
               ),
             ),
             child: const Text('Assisted import'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => LicensePanelScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('License policies'),
           ),
               ],
             );
@@ -938,6 +948,82 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class LicensePanelScreen extends StatefulWidget {
+  const LicensePanelScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<LicensePanelScreen> createState() => _LicensePanelScreenState();
+}
+
+class _LicensePanelScreenState extends State<LicensePanelScreen> {
+  List<LicensePolicy> policies = const [];
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await widget.api.listMyLicensePolicies();
+      if (mounted) setState(() => policies = value);
+    } catch (_) {
+      if (mounted) setState(() => status = 'License policies unavailable.');
+    }
+  }
+
+  Future<void> _seed(String slug) async {
+    try {
+      await widget.api.upsertMyLicensePolicy(
+        slug: slug,
+        displayName: slug,
+        allowCommercial: true,
+        requireApproval: false,
+        royaltyPercent: 25,
+      );
+      _load();
+    } catch (_) {
+      if (mounted) setState(() => status = 'Cannot save policy.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('License policies')),
+      body: RefreshIndicator(
+        onRefresh: () async => _load(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('My policies', style: Theme.of(context).textTheme.titleMedium),
+            if (policies.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No license policies yet.'),
+              )
+            else
+              for (final p in policies)
+                ListTile(
+                  title: Text(p.displayName),
+                  subtitle: Text(
+                      'Royalty ${p.royaltyPercent}% · ${p.allowCommercial ? "commercial OK" : "no commercial"}'),
+                ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => _seed('default'),
+              child: const Text('Create default license'),
+            ),
+            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class TenantDashboardScreen extends StatefulWidget {

@@ -26,3 +26,4 @@ Immutable releases, changelogs, buyer update notifications, and freshness indica
 Integration plugin system (manifests, signatures, scope, lifecycle, audit) is documented in [`docs/plugins.md`](docs/plugins.md).
 Managed SaaS hosting (tenants, subscriptions, quotas, export/deletion) is documented in [`docs/managed-saas.md`](docs/managed-saas.md).
 Assisted imports, draft review, and linked translations are documented in [`docs/assisted-import.md`](docs/assisted-import.md).
+Commercial remix revenue (license policies, ancestry, approval, multi-party shares) is documented in [`docs/commercial-remixes.md`](docs/commercial-remixes.md).

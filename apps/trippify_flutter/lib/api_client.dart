@@ -127,6 +127,28 @@ abstract interface class AppApi {
   Future<ImportDraft> rejectImportDraft(String draftId);
   Future<Translation> createTranslation(String sourceDraftId, String locale, String body);
   Future<List<QuotaRow>> listMyAiQuotas();
+  Future<List<LicensePolicy>> listMyLicensePolicies();
+  Future<LicensePolicy> upsertMyLicensePolicy({
+    required String slug,
+    String? displayName,
+    required bool allowCommercial,
+    required bool requireApproval,
+    required int royaltyPercent,
+  });
+  Future<List<LicensePolicy>> listCreatorLicensePolicies(String slug);
+  Future<RemixAncestry> declareRemixAncestry({
+    required String childGuideId,
+    required String parentGuideId,
+    required String licensePolicyId,
+    String? attributionJson,
+  });
+  Future<RemixAncestry> getGuideAncestry(String guideId);
+  Future<List<RemixAncestry>> listApprovalQueue();
+  Future<RemixAncestry> decideRemixApproval({
+    required String ancestryId,
+    required String decision,
+    String? reason,
+  });
 }
 
 class GuideSummary {
@@ -799,6 +821,40 @@ class Translation {
   final String id, sourceDraftId, locale, body, status;
   final DateTime createdAt;
   final DateTime? updatedAt;
+}
+
+class LicensePolicy {
+  const LicensePolicy(
+    this.id,
+    this.ownerUserId,
+    this.slug,
+    this.displayName,
+    this.allowCommercial,
+    this.requireApproval,
+    this.royaltyPercent,
+    this.createdAt,
+    this.updatedAt,
+  );
+  final String id, ownerUserId, slug, displayName;
+  final bool allowCommercial, requireApproval;
+  final int royaltyPercent;
+  final DateTime createdAt, updatedAt;
+}
+
+class RemixAncestry {
+  const RemixAncestry(
+    this.id,
+    this.childGuideId,
+    this.parentGuideId,
+    this.licensePolicyId,
+    this.attributionJson,
+    this.decision,
+    this.createdAt,
+    this.decidedAt,
+  );
+  final String id, childGuideId, parentGuideId, licensePolicyId, attributionJson, decision;
+  final DateTime createdAt;
+  final DateTime? decidedAt;
 }
 
 abstract interface class TokenStore {
@@ -2017,6 +2073,108 @@ class ApiClient implements AppApi {
         v['status'] as String,
         DateTime.parse(v['createdAt'] as String),
         _parseNullableDate(v['updatedAt']),
+      );
+
+  @override
+  Future<List<LicensePolicy>> listMyLicensePolicies() async {
+    final v = await _json('GET', '/api/v1/me/license-policies', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map(_toLicensePolicy)
+        .toList();
+  }
+
+  @override
+  Future<LicensePolicy> upsertMyLicensePolicy({
+    required String slug,
+    String? displayName,
+    required bool allowCommercial,
+    required bool requireApproval,
+    required int royaltyPercent,
+  }) async {
+    final v = await _json('POST', '/api/v1/me/license-policies', {
+      'slug': slug,
+      'displayName': displayName ?? slug,
+      'allowCommercial': allowCommercial,
+      'requireApproval': requireApproval,
+      'royaltyPercent': royaltyPercent,
+    });
+    return _toLicensePolicy(v);
+  }
+
+  @override
+  Future<List<LicensePolicy>> listCreatorLicensePolicies(String slug) async {
+    final v = await _json('GET', '/api/v1/creators/$slug/license', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map(_toLicensePolicy)
+        .toList();
+  }
+
+  @override
+  Future<RemixAncestry> declareRemixAncestry({
+    required String childGuideId,
+    required String parentGuideId,
+    required String licensePolicyId,
+    String? attributionJson,
+  }) async {
+    final v = await _json('POST', '/api/v1/guides/$childGuideId/remix/ancestry', {
+      'parentGuideId': parentGuideId,
+      'licensePolicyId': licensePolicyId,
+      if (attributionJson != null) 'attributionJson': attributionJson,
+    });
+    return _toAncestry(v);
+  }
+
+  @override
+  Future<RemixAncestry> getGuideAncestry(String guideId) async {
+    final v = await _json('GET', '/api/v1/guides/$guideId/ancestry', null);
+    return _toAncestry(v);
+  }
+
+  @override
+  Future<List<RemixAncestry>> listApprovalQueue() async {
+    final v = await _json('GET', '/api/v1/admin/remix-approvals/queue', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map(_toAncestry)
+        .toList();
+  }
+
+  @override
+  Future<RemixAncestry> decideRemixApproval({
+    required String ancestryId,
+    required String decision,
+    String? reason,
+  }) async {
+    final v = await _json('POST', '/api/v1/admin/remix-approvals/$ancestryId/decide', {
+      'decision': decision,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+    });
+    return _toAncestry(v);
+  }
+
+  static LicensePolicy _toLicensePolicy(Map<String, dynamic> v) => LicensePolicy(
+        v['id'] as String,
+        v['ownerUserId'] as String,
+        v['slug'] as String,
+        v['displayName'] as String,
+        v['allowCommercial'] as bool,
+        v['requireApproval'] as bool,
+        v['royaltyPercent'] as int,
+        DateTime.parse(v['createdAt'] as String),
+        DateTime.parse(v['updatedAt'] as String),
+      );
+
+  static RemixAncestry _toAncestry(Map<String, dynamic> v) => RemixAncestry(
+        v['id'] as String,
+        v['childGuideId'] as String,
+        v['parentGuideId'] as String,
+        v['licensePolicyId'] as String,
+        v['attributionJson'] as String,
+        v['decision'] as String,
+        DateTime.parse(v['createdAt'] as String),
+        _parseNullableDate(v['decidedAt']),
       );
 
   Future<Map<String, dynamic>> _json(
