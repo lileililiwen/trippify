@@ -3,6 +3,35 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api_client.dart';
 
+final ThemeData _appTheme = ThemeData(
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: const Color(0xFF6750A4),
+    brightness: Brightness.light,
+  ),
+  useMaterial3: true,
+  appBarTheme: const AppBarTheme(
+    centerTitle: true,
+    elevation: 2,
+  ),
+  cardTheme: CardThemeData(
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  ),
+  filledButtonTheme: FilledButtonThemeData(
+    style: FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    ),
+  ),
+  textButtonTheme: TextButtonThemeData(
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      textStyle: const TextStyle(fontSize: 16),
+    ),
+  ),
+);
+
 void main() => runApp(
   TrippifyApp(
     api: ApiClient(
@@ -22,6 +51,7 @@ class TrippifyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Trippify',
+    theme: _appTheme,
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('en'), Locale('zh')],
     routes: {
@@ -63,162 +93,126 @@ class _SystemScreenState extends State<SystemScreen> {
     _result = widget.api.getSystemInfo();
   }
 
-  void _retry() => setState(() => _result = widget.api.getSystemInfo());
+void _retry() => setState(() => _result = widget.api.getSystemInfo());
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Trippify')),
-body: Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: FutureBuilder<SystemDistributionInfo>(
-          future: _result,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const CircularProgressIndicator();
-            }
-            if (snapshot.hasError) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Unable to reach the service'),
-                  FilledButton(onPressed: _retry, child: const Text('Retry')),
-                ],
-              );
-            }
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Semantics(
-                  label: 'API version',
-                  child: Text(
-                    '${snapshot.data!.version}',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => Navigator.pushNamed(context, '/sign-in'),
-                  child: const Text('Sign in'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/register'),
-                  child: const Text('Create account'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/profile'),
-                  child: const Text('My profile'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/creator'),
-                  child: const Text('Find a creator'),
-                ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/creator/enroll'),
-                  child: const Text('Become a creator'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/guides'),
-                  child: const Text('My guides'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/planning'),
-                  child: const Text('Plan routes & budget'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/discover'),
-                  child: const Text('Discover guides'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/library'),
-                  child: const Text('My library'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => CreatorDashboardScreen(api: widget.api),
-                    ),
-                  ),
-                  child: const Text('Creator dashboard'),
-                ),
-TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => AdminOperationsScreen(api: widget.api),
-              ),
+    appBar: AppBar(
+      title: const Text('Trippify'),
+      elevation: 2,
+    ),
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 32),
+          const Text(
+            'Trippify',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF6750A4),
             ),
-            child: const Text('Admin operations'),
           ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => NotificationsScreen(api: widget.api),
-              ),
+          const SizedBox(height: 16),
+          const Text(
+            'Welcome to your trip planning assistant',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
             ),
-            child: const Text('Notifications'),
           ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => NotificationPreferencesScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('Notification preferences'),
+          const SizedBox(height: 32),
+          _buildCard(
+            context,
+            'System Status',
+            const Icon(Icons.cloud, size: 48, color: Color(0xFF6750A4)),
+            _buildSystemInfo(),
           ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => PluginCatalogScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('Plugin catalog'),
+          const SizedBox(height: 24),
+          _buildCard(
+            context,
+            'Quick Actions',
+            const Icon(Icons.arrow_forward, size: 48, color: Colors.grey),
+            _buildQuickActions(context),
           ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => TenantDashboardScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('My tenant'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => AssistedImportScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('Assisted import'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => LicensePanelScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('License policies'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => SystemStatusScreen(api: widget.api),
-              ),
-            ),
-            child: const Text('Self-hosted status'),
-          ),
-              ],
-            );
-          },
-        ),
+        ],
       ),
     ),
+  );
+
+  Widget _buildCard(BuildContext context, String title, Icon icon, Widget content) => Card(
+    margin: const EdgeInsets.only(bottom: 24),
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              icon,
+              const SizedBox(width: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6750A4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          content,
+        ],
+      ),
+    ),
+  );
+
+  Widget _buildSystemInfo() => FutureBuilder<SystemDistributionInfo>(
+    future: _result,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const CircularProgressIndicator();
+      }
+      if (snapshot.hasError) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Unable to reach the service'),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: _retry, child: const Text('Retry')),
+          ],
+        );
+      }
+      final info = snapshot.data!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Version: ${info.version}', style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 8),
+          Text('Migrations: ${info.migrationsRegistered}', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+        ],
+      );
+    },
+  );
+
+  Widget _buildQuickActions(BuildContext context) => Wrap(
+    spacing: 12,
+    runSpacing: 12,
+    children: [
+      _actionButton(context, '/sign-in', Icons.login, 'Sign in'),
+      _actionButton(context, '/register', Icons.person_add, 'Create account'),
+      _actionButton(context, '/guides', Icons.menu_book, 'My guides'),
+      _actionButton(context, '/discover', Icons.explore, 'Discover guides'),
+      _actionButton(context, '/library', Icons.collections_bookmark, 'My library'),
+    ],
+  );
+
+  Widget _actionButton(BuildContext context, String route, IconData icon, String label) => FilledButton.icon(
+    onPressed: () => Navigator.pushNamed(context, route),
+    icon: Icon(icon, size: 20),
+    label: Text(label),
   );
 }
 
@@ -2675,10 +2669,15 @@ class RegistrationScreen extends StatefulWidget {
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final email = TextEditingController();
   final password = TextEditingController();
+  final passwordConfirm = TextEditingController();
   String? status;
   Future<void> submit() async {
     if (email.text.trim().isEmpty || password.text.length < 10) {
       setState(() => status = 'Enter a valid email and strong password.');
+      return;
+    }
+    if (password.text != passwordConfirm.text) {
+      setState(() => status = 'Passwords do not match.');
       return;
     }
     try {
@@ -2704,6 +2703,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           controller: password,
           obscureText: true,
           decoration: const InputDecoration(labelText: 'Password'),
+        ),
+        TextField(
+          controller: passwordConfirm,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Confirm Password'),
         ),
         if (status != null) Semantics(liveRegion: true, child: Text(status!)),
         FilledButton(onPressed: submit, child: const Text('Create account')),
