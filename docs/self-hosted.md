@@ -7,8 +7,8 @@ Third-party operators need a reproducible deployment, hand-fed upgrades, and aud
 - `GET /api/v1/system/info` (public) returns the API version. **No secrets, no admin-only fields** are exposed.
 - `GET /api/v1/admin/system/status` returns the version, applied migration count, pending migration list. Admin-only.
 - `POST /api/v1/admin/system/upgrade` calls `DbContext.Database.MigrateAsync()` to apply pending migrations. Returns `{ "status": "applied", "appliedAt": "..." }`. When the provider doesn't support migrations (for example the in-memory database used by tests), the endpoint short-circuits with `{ "status": "skipped", "reason": "..." }` instead of `502`.
-- `POST /api/v1/admin/system/backup { label? }` snapshots a JSON payload of small reference tables (users, guide counts, feature flags) plus a captured timestamp. The record is persisted in `BackupSnapshots` for audit.
-- `POST /api/v1/admin/system/restore { payload }` records the restore payload alongside the actor and a generated label; downstream tooling reads the row to apply migrations or restore data.
+- `POST /api/v1/admin/system/backup { label?, operatorKey? }` writes a versioned, checksummed artifact and persists audit metadata. An operator key encrypts the artifact and is never persisted.
+- `POST /api/v1/admin/system/restore { snapshotId, operatorKey? }` validates checksum, version, capacity-independent envelope, and key before marking the artifact restored. Payload-only requests remain a non-restorable compatibility path.
 - `GET /api/v1/admin/feature-flags` returns every flag with `Enabled`, `Value`, and `UpdatedAt`.
 - `PUT /api/v1/admin/feature-flags/{key} { enabled, value }` upserts the flag. Duplicate keys reuse the existing row to keep audit history continuous.
 
@@ -25,5 +25,14 @@ The `Trippify.SelfHosted` meter emits `trippify.selfhosted.commands` with low-ca
 
 - Public `system/info` exposes only the version — never `connection strings`, secrets, or feature flag values.
 - All admin endpoints require the `Administrator` role; non-admins receive `403`.
-- Backup snapshots never contain credentials; only metadata (counts) and feature flag state are returned, so the JSON stays small and reviewable.
-- Restore accepts a `payload` from the operator but **never** applies it inline — the entry is recorded so a separate restore worker can apply it offline.
+- Backup snapshots never contain credentials; artifacts are encrypted when an operator key is supplied and the key is never stored.
+- Restore validation never overwrites the live database inline; an offline operator applies the validated artifact to an approved target.
+## Restorable backups
+
+Administrators can create versioned backup artifacts with `POST /api/v1/admin/system/backup`.
+Set `operatorKey` to encrypt the artifact; the key is never stored. The response includes a
+SHA-256 checksum and `status=ready`. Restore validation is performed with
+`POST /api/v1/admin/system/restore` using `{ "snapshotId": "...", "operatorKey": "..." }`.
+Artifacts are retained for 30 days by default and are written to
+`SelfHosted:BackupDirectory` (the application `backups` directory when unset). Legacy
+payload-only snapshots remain readable but are explicitly non-restorable.

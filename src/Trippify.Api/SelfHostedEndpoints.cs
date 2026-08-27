@@ -66,7 +66,7 @@ public static class SelfHostedEndpoints
         }
     }
 
-    private static async Task<IResult> TriggerBackup(SystemInfoRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> TriggerBackup(SystemInfoRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, RestorableBackupService artifacts, CancellationToken cancellationToken)
     {
         var actor = IdentityEndpoints.CurrentUserId(principal);
         var payload = System.Text.Json.JsonSerializer.Serialize(new
@@ -84,25 +84,47 @@ public static class SelfHostedEndpoints
             Payload = payload,
             CreatedAt = clock.UtcNow,
             CreatedByUserId = actor,
+            SchemaVersion = 2,
+            Status = "writing",
+            Restorable = false,
         };
         db.BackupSnapshots.Add(snapshot);
+        await db.SaveChangesAsync(cancellationToken);
+        var artifact = await artifacts.WriteAsync(snapshot.Id, payload, request?.OperatorKey, cancellationToken);
+        snapshot.ArtifactPath = artifact.path;
+        snapshot.Sha256 = artifact.checksum;
+        snapshot.Encrypted = artifact.encrypted;
+        snapshot.Restorable = true;
+        snapshot.Status = "ready";
+        snapshot.RetentionUntil = clock.UtcNow.AddDays(30);
         await db.SaveChangesAsync();
         SelfHostedCommands.Add(1, new KeyValuePair<string, object?>("operation", "backup-recorded"));
         return Results.Created($"/api/v1/admin/system/status", BackupResponse(snapshot));
     }
 
-    private static async Task<IResult> TriggerRestore(RestoreRequest request, AppDbContext db, ClaimsPrincipal principal)
+    private static async Task<IResult> TriggerRestore(RestoreRequest request, AppDbContext db, ClaimsPrincipal principal, RestorableBackupService artifacts, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request?.Payload))
+        if (request is null || (request.SnapshotId is null && string.IsNullOrWhiteSpace(request.Payload)))
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["payload"] = ["Payload is required."] });
         var actor = IdentityEndpoints.CurrentUserId(principal);
+        if (request.SnapshotId is not null)
+        {
+            var source = await db.BackupSnapshots.SingleOrDefaultAsync(x => x.Id == request.SnapshotId, cancellationToken);
+            if (source is null) return Results.NotFound();
+            try { _ = await artifacts.ReadAndValidateAsync(source, request.OperatorKey, cancellationToken); }
+            catch (UnauthorizedAccessException ex) { return Results.Problem(ex.Message, statusCode: 403); }
+            catch (Exception ex) { source.Status = "failed"; await db.SaveChangesAsync(cancellationToken); return Results.Problem(ex.Message, statusCode: 422); }
+            source.Status = "restored";
+            await db.SaveChangesAsync(cancellationToken);
+            return Results.Ok(new { status = "validated", snapshotId = source.Id });
+        }
         var snapshot = new BackupSnapshot
         {
             Id = Guid.NewGuid(),
             Label = $"restore-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}",
-            Payload = request.Payload,
+            Payload = request.Payload!,
             CreatedAt = DateTimeOffset.UtcNow,
-            CreatedByUserId = actor,
+            CreatedByUserId = actor, Status = "legacy", Restorable = false,
         };
         db.BackupSnapshots.Add(snapshot);
         await db.SaveChangesAsync();
@@ -136,14 +158,14 @@ public static class SelfHostedEndpoints
         return Results.Ok(FlagResponse(existing));
     }
 
-    private static BackupSnapshotResponse BackupResponse(BackupSnapshot s) => new(s.Id, s.Label, s.Payload.Length, s.CreatedAt);
+    private static BackupSnapshotResponse BackupResponse(BackupSnapshot s) => new(s.Id, s.Label, s.Payload.Length, s.CreatedAt, s.Status, s.Restorable, s.Encrypted, s.Sha256);
     private static FeatureFlagResponse FlagResponse(FeatureFlag f) => new(f.Key, f.Enabled, f.Value, f.UpdatedAt);
 }
 
-public sealed record SystemInfoRequest(string? Label);
-public sealed record RestoreRequest(string Payload);
+public sealed record SystemInfoRequest(string? Label, string? OperatorKey = null);
+public sealed record RestoreRequest(string? Payload = null, Guid? SnapshotId = null, string? OperatorKey = null);
 public sealed record UpsertFeatureFlagRequest(bool? Enabled, string? Value);
 public sealed record SystemInfoResponse(string Version, int MigrationsRegistered);
 public sealed record SystemStatusResponse(string Version, int AppliedCount, int PendingCount, IReadOnlyList<string> Applied, IReadOnlyList<string> Pending);
-public sealed record BackupSnapshotResponse(Guid Id, string Label, int PayloadLength, DateTimeOffset CreatedAt);
+public sealed record BackupSnapshotResponse(Guid Id, string Label, int PayloadLength, DateTimeOffset CreatedAt, string Status = "legacy", bool Restorable = false, bool Encrypted = false, string? Sha256 = null);
 public sealed record FeatureFlagResponse(string Key, bool Enabled, string Value, DateTimeOffset UpdatedAt);

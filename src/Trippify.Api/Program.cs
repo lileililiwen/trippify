@@ -27,6 +27,7 @@ builder.Services.AddIdentityApiEndpoints<AppUser>(options => { options.SignIn.Re
 builder.Services.AddHealthChecks().AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]).AddCheck<BackgroundJobsHealthCheck>("background-jobs", tags: ["ready"]);
 builder.Services.AddSingleton(new ActivitySource("Trippify.Api")); builder.Services.AddSingleton(new Meter("Trippify.Api"));
 builder.Services.AddSingleton<LocalProviders>(sp => new LocalProviders(sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<RestorableBackupService>();
 builder.Services.AddSingleton<IObjectStorage>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<Trippify.Application.IEmailSender>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IMapProvider>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IPaymentGateway>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IAiAssistant>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddScoped<IBackgroundJobQueue, DurableBackgroundJobQueue>(); builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<BackgroundJobProcessor>(); builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddTransient<Microsoft.AspNetCore.Identity.IEmailSender<AppUser>, IdentityEmailSender>();

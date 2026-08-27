@@ -20,6 +20,13 @@ public sealed class BackupSnapshot
     public string Payload { get; set; } = "{}";
     public DateTimeOffset CreatedAt { get; init; }
     public Guid CreatedByUserId { get; set; }
+    public int SchemaVersion { get; set; } = 1;
+    public string Status { get; set; } = "legacy";
+    public bool Restorable { get; set; }
+    public bool Encrypted { get; set; }
+    public string? ArtifactPath { get; set; }
+    public string? Sha256 { get; set; }
+    public DateTimeOffset? RetentionUntil { get; set; }
 }
 
 public sealed class FeatureFlagConfiguration : IEntityTypeConfiguration<FeatureFlag>
@@ -40,6 +47,9 @@ public sealed class BackupSnapshotConfiguration : IEntityTypeConfiguration<Backu
         e.ToTable("backup_snapshots"); e.HasKey(x => x.Id);
         e.Property(x => x.Label).HasMaxLength(160);
         e.Property(x => x.Payload).HasMaxLength(200000);
+        e.Property(x => x.Status).HasMaxLength(32);
+        e.Property(x => x.ArtifactPath).HasMaxLength(1000);
+        e.Property(x => x.Sha256).HasMaxLength(64);
         e.HasIndex(x => x.CreatedAt);
     }
 }
