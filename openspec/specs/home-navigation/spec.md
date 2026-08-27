@@ -1,12 +1,8 @@
-# Home Navigation Specification
+# home-navigation Specification
 
 ## Purpose
-Render the Flutter home surface (`SystemScreen`) as the primary navigation
-entry, adapting to the visitor's session state, roles, and creator status
-without exposing entries the visitor cannot use.
-
+TBD - created by archiving change 2026-08-27-gate-home-screen-by-auth-state-and-role. Update Purpose after archive.
 ## Requirements
-
 ### Requirement: Auth-aware home surface
 The home surface SHALL render distinct shapes for anonymous, signed-in user,
 signed-in creator, and signed-in administrator visitors, driven by the token
@@ -87,3 +83,4 @@ signed-in visitor whose email has not yet been confirmed.
 - **WHEN** a signed-in visitor with `emailConfirmed == true` opens the
   home surface
 - **THEN** no verification banner is rendered
+

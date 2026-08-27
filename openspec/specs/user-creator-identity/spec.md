@@ -24,3 +24,25 @@ The system SHALL allow eligible users to enroll as creators and administrators t
 - **WHEN** a suspended creator attempts a creator-only command
 - **THEN** the API denies the command without altering owned content
 
+### Requirement: Session summary projection
+The system SHALL expose an authenticated endpoint that returns the current
+user's display name, email, avatar URL, roles, active creator status, account
+status, and email-confirmed flag in a single projection suitable for client
+navigation gating.
+
+#### Scenario: Authenticated summary
+- **WHEN** a signed-in user calls the session summary endpoint with a valid
+  access token
+- **THEN** the response includes the user's email, display name, avatar URL,
+  role list, active creator flag, account status, and email-confirmed flag
+
+#### Scenario: Anonymous request
+- **WHEN** an anonymous client calls the session summary endpoint
+- **THEN** the API returns 401 and discloses no account information
+
+#### Scenario: Role change visibility
+- **WHEN** an administrator is granted or revoked the `Administrator` role
+  and the user re-fetches the session summary
+- **THEN** the response reflects the updated role list without requiring the
+  client to re-authenticate
+
