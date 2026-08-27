@@ -1,3 +1,8 @@
+import 'dart:async';
+
+import 'package:crypto/crypto.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -2012,6 +2017,9 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
   late Future<AdminAuditResponse> audit;
   late Future<AdminUsersResponse> users;
   late Future<AdminCreatorsResponse> creators;
+  final TextEditingController evidenceIdInput = TextEditingController();
+  String? evidenceReviewStatus;
+  List<EvidenceAttachmentReviewerView> reviewerAttachments = const [];
 
   @override
   void initState() {
@@ -2025,6 +2033,48 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
       users = widget.api.listAdminUsers(limit: 50);
       creators = widget.api.listAdminCreators(limit: 50);
     });
+  }
+
+  Future<void> _loadReviewerAttachments(String evidenceId) async {
+    try {
+      final list = await widget.api.listReviewerEvidenceAttachments(evidenceId);
+      if (!mounted) return;
+      setState(() {
+        reviewerAttachments = list;
+        evidenceReviewStatus = 'Loaded ${list.length} attachment(s).';
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        reviewerAttachments = const [];
+        evidenceReviewStatus = err.message;
+      });
+    }
+  }
+
+  Future<void> _openReviewerDownload(String attachmentId) async {
+    try {
+      final download = await widget.api.getReviewerEvidenceAttachmentDownload(attachmentId);
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Signed download'),
+          content: Text(
+            '${download.fileName}\n${download.contentType}\nExpires ${download.expiresAt.toIso8601String()}\n${download.url}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() => evidenceReviewStatus = err.message);
+    }
   }
 
   @override
@@ -2141,6 +2191,57 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
                 );
               },
             ),
+            const SizedBox(height: 16),
+            sectionTitle(context, 'Evidence attachments review'),
+            TextField(
+              controller: evidenceIdInput,
+              decoration: const InputDecoration(
+                labelText: 'Evidence ID',
+                helperText: 'Paste a pending evidence ID to review attachments safely.',
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: () {
+                final value = evidenceIdInput.text.trim();
+                if (value.isEmpty) return;
+                _loadReviewerAttachments(value);
+              },
+              icon: const Icon(Icons.search),
+              label: const Text('Load attachments'),
+            ),
+            if (evidenceReviewStatus != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(evidenceReviewStatus!),
+              ),
+            if (reviewerAttachments.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No attachments loaded.'),
+              )
+            else
+              Column(
+                children: [
+                  for (final attachment in reviewerAttachments)
+                    ListTile(
+                      leading: Icon(attachment.state == 'Ready'
+                          ? Icons.verified_outlined
+                          : Icons.shield_outlined),
+                      title: Text(attachment.fileName),
+                      subtitle: Text(
+                        '${attachment.contentType} · ${attachment.sizeBytes} bytes · ${attachment.state}'
+                        '${attachment.scanFailureCode != null ? ' · ${attachment.scanFailureCode}' : ''}',
+                      ),
+                      trailing: TextButton(
+                        onPressed: attachment.state == 'Ready'
+                            ? () => _openReviewerDownload(attachment.id)
+                            : null,
+                        child: const Text('Download'),
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -2384,18 +2485,46 @@ class _VerifiedTripsSection extends StatefulWidget {
   State<_VerifiedTripsSection> createState() => _VerifiedTripsSectionState();
 }
 
+class _EvidenceAttachmentDraft {
+  _EvidenceAttachmentDraft({
+    required this.localId,
+    required this.fileName,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.sha256,
+    required this.bytes,
+  })  : attachmentId = null,
+       state = EvidenceAttachmentDraftState.uploading,
+       error = null,
+       progress = 0;
+
+  final String localId;
+  final String fileName;
+  final String contentType;
+  final int sizeBytes;
+  final String sha256;
+  final Uint8List bytes;
+  String? attachmentId;
+  EvidenceAttachmentDraftState state;
+  String? error;
+  double progress;
+}
+
+enum EvidenceAttachmentDraftState { uploading, scanning, ready, failed }
+
 class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   late Future<VerifiedBadge> badge;
   late Future<TripInsightSummary> insights;
   final body = TextEditingController();
   String kind = 'TripJournal';
   DateTime? evidenceDate;
-  String? evidenceAttachment;
   String? status;
   final party = TextEditingController(text: '2');
   final tripDays = TextEditingController(text: '5');
   final cost = TextEditingController(text: '150000');
   final currency = TextEditingController(text: 'JPY');
+  final List<_EvidenceAttachmentDraft> drafts = [];
+  bool isSubmitting = false;
 
   @override
   void initState() {
@@ -2411,7 +2540,24 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   }
 
   Future<void> submitEvidence() async {
+    if (isSubmitting) return;
+    if (drafts.any((d) => d.state == EvidenceAttachmentDraftState.uploading || d.state == EvidenceAttachmentDraftState.scanning)) {
+      setState(() => status = 'Wait for the attachments to finish scanning before submitting.');
+      return;
+    }
+    if (body.text.trim().length < 50) {
+      setState(() => status = 'Evidence text must contain at least 50 characters.');
+      return;
+    }
+    setState(() {
+      isSubmitting = true;
+      status = 'Submitting evidence…';
+    });
     try {
+      final readyIds = drafts
+          .where((d) => d.state == EvidenceAttachmentDraftState.ready && d.attachmentId != null)
+          .map((d) => d.attachmentId!)
+          .toList();
       final prefix = evidenceDate == null
           ? ''
           : '${evidenceDate!.toIso8601String().substring(0, 10)}: ';
@@ -2419,18 +2565,22 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
         widget.guideId,
         kind: kind,
         body: '$prefix${body.text.trim()}',
-        redactedReference: evidenceAttachment,
+        attachmentIds: readyIds,
       );
       body.clear();
       setState(() {
         evidenceDate = null;
-        evidenceAttachment = null;
+        drafts.clear();
         status = 'Evidence submitted for review.';
       });
       widget.onSubmit('Evidence submitted for review.');
       _refresh();
+    } on ApiException catch (err) {
+      setState(() => status = err.message.isNotEmpty ? err.message : 'Cannot submit evidence.');
     } catch (_) {
-      setState(() => status = 'Cannot submit evidence.');
+      setState(() => status = 'Cannot submit evidence. Check your connection and retry.');
+    } finally {
+      if (mounted) setState(() => isSubmitting = false);
     }
   }
 
@@ -2447,19 +2597,173 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   }
 
   Future<void> _pickEvidenceAttachment() async {
-    // The backend does not yet accept attachments; surface a placeholder
-    // bottom sheet so the surface is discoverable. The future
-    // implementation will read a file picker result here.
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'Attachment uploads are coming soon. The picker will read a '
-          'local file or image and upload it with your evidence.',
-        ),
-      ),
-    );
+    if (drafts.where((d) => d.state != EvidenceAttachmentDraftState.failed).length >= 5) {
+      setState(() => status = 'You can attach up to five files per evidence submission.');
+      return;
+    }
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        setState(() => status = 'Could not read the selected file. Try another file.');
+        return;
+      }
+      final sha256 = await _sha256Hex(bytes);
+      final contentType = _guessContentType(file.name);
+      final draft = _EvidenceAttachmentDraft(
+        localId: DateTime.now().microsecondsSinceEpoch.toString(),
+        fileName: file.name,
+        contentType: contentType,
+        sizeBytes: bytes.length,
+        sha256: sha256,
+        bytes: Uint8List.fromList(bytes),
+      );
+      setState(() {
+        drafts.add(draft);
+        status = 'Uploading ${file.name}…';
+      });
+      await _uploadDraft(draft);
+    } on ApiException catch (err) {
+      setState(() => status = err.message);
+    } catch (error) {
+      setState(() => status = 'Could not pick a file right now. Try again when you are online.');
+    }
+  }
+
+  Future<void> _uploadDraft(_EvidenceAttachmentDraft draft) async {
+    try {
+      final stage = await widget.api.stageEvidenceAttachment(
+        fileName: draft.fileName,
+        contentType: draft.contentType,
+        sizeBytes: draft.sizeBytes,
+        sha256: draft.sha256,
+      );
+      draft.attachmentId = stage.attachmentId;
+      setState(() {
+        draft.state = EvidenceAttachmentDraftState.uploading;
+        draft.progress = 0.5;
+        status = 'Scanning ${draft.fileName}…';
+      });
+      await widget.api.uploadEvidenceAttachmentContent(
+        attachmentId: stage.attachmentId,
+        bytes: draft.bytes,
+      );
+      setState(() {
+        draft.state = EvidenceAttachmentDraftState.scanning;
+        draft.progress = 1.0;
+        status = 'Scanning ${draft.fileName}…';
+      });
+      // Poll briefly so the user sees the scanning state progress
+      // before the scan completes and the row turns Ready.
+      await _waitForReady(draft);
+    } on ApiException catch (err) {
+      if (mounted) {
+        setState(() {
+          draft.state = EvidenceAttachmentDraftState.failed;
+          draft.error = err.message.isNotEmpty ? err.message : 'Upload failed.';
+          status = 'Could not attach ${draft.fileName}. ${draft.error}';
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          draft.state = EvidenceAttachmentDraftState.failed;
+          draft.error = 'Upload failed. Check your connection and retry.';
+          status = 'Could not attach ${draft.fileName}. ${draft.error}';
+        });
+      }
+    }
+  }
+
+  Future<void> _waitForReady(_EvidenceAttachmentDraft draft) async {
+    if (draft.attachmentId == null) return;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      try {
+        final attachments = await widget.api.listEvidenceStagedAttachments();
+        final match = attachments.firstWhere(
+          (a) => a.id == draft.attachmentId,
+          orElse: () => EvidenceAttachmentSummary(
+            id: '',
+            fileName: '',
+            contentType: '',
+            sizeBytes: 0,
+            state: '',
+            createdAt: DateTime.now(),
+          ),
+        );
+        if (match.id.isEmpty) continue;
+        if (match.state == 'Ready') {
+          if (mounted) {
+            setState(() {
+              draft.state = EvidenceAttachmentDraftState.ready;
+              draft.error = null;
+              status = '${draft.fileName} is ready to submit.';
+            });
+          }
+          return;
+        }
+        if (match.state == 'Rejected') {
+          if (mounted) {
+            setState(() {
+              draft.state = EvidenceAttachmentDraftState.failed;
+              draft.error = match.scanFailureCode ?? 'rejected';
+              status = '${draft.fileName} was rejected by the scanner.';
+            });
+          }
+          return;
+        }
+      } on ApiException {
+        // Network errors during polling are tolerated; the user can retry.
+      }
+    }
+    // Leave in scanning state and let the user retry if it stays stuck.
+    if (mounted) {
+      setState(() {
+        draft.state = EvidenceAttachmentDraftState.scanning;
+        status = '${draft.fileName} is still being scanned.';
+      });
+    }
+  }
+
+  Future<void> _retryDraft(_EvidenceAttachmentDraft draft) async {
+    setState(() {
+      draft.state = EvidenceAttachmentDraftState.uploading;
+      draft.error = null;
+      draft.progress = 0;
+      status = 'Retrying ${draft.fileName}…';
+    });
+    await _uploadDraft(draft);
+  }
+
+  Future<void> _removeDraft(_EvidenceAttachmentDraft draft) async {
+    final id = draft.attachmentId;
+    setState(() => drafts.remove(draft));
+    if (id == null) return;
+    try {
+      await widget.api.removeEvidenceAttachment(id);
+    } on ApiException catch (_) {
+      // Best-effort: server-side cleanup will eventually delete unattached files.
+    }
+  }
+
+  String _guessContentType(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    return 'application/octet-stream';
+  }
+
+  Future<String> _sha256Hex(Uint8List bytes) async {
+    return sha256.convert(bytes).toString();
   }
 
   Future<void> submitInsight() async {
@@ -2557,6 +2861,100 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
         },
       );
 
+  Widget _attachmentsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final draft in drafts)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Semantics(
+              container: true,
+              label: _attachmentLabel(draft),
+              child: Row(
+                children: [
+                  _attachmentIcon(draft),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          draft.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (draft.state == EvidenceAttachmentDraftState.uploading ||
+                            draft.state == EvidenceAttachmentDraftState.scanning)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: LinearProgressIndicator(value: draft.progress),
+                          ),
+                        if (draft.error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              draft.error!,
+                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            _attachmentStatus(draft),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (draft.state == EvidenceAttachmentDraftState.failed)
+                    IconButton(
+                      tooltip: 'Retry upload',
+                      onPressed: () => _retryDraft(draft),
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  IconButton(
+                    tooltip: 'Remove attachment',
+                    onPressed: () => _removeDraft(draft),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _attachmentLabel(_EvidenceAttachmentDraft draft) {
+    return switch (draft.state) {
+      EvidenceAttachmentDraftState.uploading => 'Uploading ${draft.fileName}',
+      EvidenceAttachmentDraftState.scanning => 'Scanning ${draft.fileName}',
+      EvidenceAttachmentDraftState.ready => '${draft.fileName} is ready',
+      EvidenceAttachmentDraftState.failed => '${draft.fileName} failed: ${draft.error ?? "unknown error"}',
+    };
+  }
+
+  Widget _attachmentIcon(_EvidenceAttachmentDraft draft) {
+    return switch (draft.state) {
+      EvidenceAttachmentDraftState.uploading => const Icon(Icons.cloud_upload_outlined),
+      EvidenceAttachmentDraftState.scanning => const Icon(Icons.shield_outlined),
+      EvidenceAttachmentDraftState.ready => const Icon(Icons.verified_outlined),
+      EvidenceAttachmentDraftState.failed => const Icon(Icons.error_outline),
+    };
+  }
+
+  String _attachmentStatus(_EvidenceAttachmentDraft draft) {
+    return switch (draft.state) {
+      EvidenceAttachmentDraftState.uploading => 'Uploading…',
+      EvidenceAttachmentDraftState.scanning => 'Scanning for unsafe content…',
+      EvidenceAttachmentDraftState.ready => 'Ready to submit',
+      EvidenceAttachmentDraftState.failed => 'Tap retry to upload again',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -2605,18 +3003,21 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
                 child: OutlinedButton.icon(
                   onPressed: _pickEvidenceAttachment,
                   icon: const Icon(Icons.attach_file),
-                  label: Text(
-                    evidenceAttachment == null
-                        ? 'Attach file'
-                        : 'Attached: $evidenceAttachment',
-                  ),
+                  label: const Text('Attach file'),
                 ),
               ),
             ],
           ),
+          if (drafts.isNotEmpty) _attachmentsList(),
           FilledButton(
-            onPressed: submitEvidence,
-            child: const Text('Submit evidence'),
+            onPressed: isSubmitting ? null : submitEvidence,
+            child: isSubmitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Submit evidence'),
           ),
           const SizedBox(height: 8),
           Text(

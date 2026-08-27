@@ -44,6 +44,7 @@ app.MapCommerce();
 app.MapLibrary();
 app.MapReview();
 app.MapVerifiedTrips();
+app.MapEvidenceAttachmentEndpoints();
 app.MapOperations();
 app.MapNotifications();
 app.MapVersioning();

@@ -53,6 +53,26 @@ public sealed class ActualTripMetric
     public DateTimeOffset SubmittedAt { get; init; }
 }
 
+public enum EvidenceAttachmentState { Staged, Scanning, Ready, Rejected, Deleted }
+
+public sealed class EvidenceAttachment
+{
+    public Guid Id { get; init; }
+    public Guid OwnerUserId { get; init; }
+    public Guid? EvidenceId { get; set; }
+    public string StorageKey { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public long SizeBytes { get; set; }
+    public string Sha256 { get; set; } = string.Empty;
+    public EvidenceAttachmentState State { get; set; } = EvidenceAttachmentState.Staged;
+    public string? ScanFailureCode { get; set; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? LinkedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+}
+
 public sealed class TripEvidenceConfiguration : IEntityTypeConfiguration<TripEvidence>
 {
     public void Configure(EntityTypeBuilder<TripEvidence> e)
@@ -103,5 +123,26 @@ public sealed class ActualTripMetricConfiguration : IEntityTypeConfiguration<Act
         e.HasIndex(x => new { x.GuideId, x.CurrencyCode });
         e.HasOne<TravelGuide>().WithMany().HasForeignKey(x => x.GuideId).OnDelete(DeleteBehavior.Cascade);
         e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class EvidenceAttachmentConfiguration : IEntityTypeConfiguration<EvidenceAttachment>
+{
+    public void Configure(EntityTypeBuilder<EvidenceAttachment> e)
+    {
+        e.ToTable("evidence_attachments"); e.HasKey(x => x.Id);
+        e.Property(x => x.StorageKey).HasMaxLength(500);
+        e.Property(x => x.FileName).HasMaxLength(200);
+        e.Property(x => x.ContentType).HasMaxLength(100);
+        e.Property(x => x.Sha256).HasMaxLength(64);
+        e.Property(x => x.State).HasConversion<string>().HasMaxLength(20);
+        e.Property(x => x.ScanFailureCode).HasMaxLength(100);
+        e.HasIndex(x => x.OwnerUserId);
+        e.HasIndex(x => x.EvidenceId);
+        e.HasIndex(x => x.State);
+        e.HasIndex(x => x.ExpiresAt);
+        e.HasIndex(x => new { x.Sha256, x.OwnerUserId }).IsUnique();
+        e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne<TripEvidence>().WithMany().HasForeignKey(x => x.EvidenceId).OnDelete(DeleteBehavior.Cascade);
     }
 }

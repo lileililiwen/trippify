@@ -254,7 +254,59 @@ class FakeApi implements AppApi {
     required String kind,
     required String body,
     String? redactedReference,
+    List<String> attachmentIds = const [],
   }) async {}
+  @override
+  Future<EvidenceAttachmentStageResult> stageEvidenceAttachment({
+    required String fileName,
+    required String contentType,
+    required int sizeBytes,
+    required String sha256,
+  }) async =>
+      EvidenceAttachmentStageResult(
+        attachmentId: 'att-1',
+        storageKey: 'evidence/key',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      );
+  @override
+  Future<EvidenceAttachmentSummary> uploadEvidenceAttachmentContent({
+    required String attachmentId,
+    required List<int> bytes,
+  }) async =>
+      EvidenceAttachmentSummary(
+        id: attachmentId,
+        fileName: 'fake.bin',
+        contentType: 'application/octet-stream',
+        sizeBytes: bytes.length,
+        state: 'Scanning',
+        createdAt: DateTime.now(),
+      );
+  @override
+  Future<List<EvidenceAttachmentSummary>> listEvidenceStagedAttachments() async => const [];
+  @override
+  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(String evidenceId) async => const [];
+  @override
+  Future<void> removeEvidenceAttachment(String attachmentId) async {}
+  @override
+  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId) async =>
+      EvidenceAttachmentDownload(
+        id: attachmentId,
+        url: Uri.parse('https://example.com/download'),
+        contentType: 'application/octet-stream',
+        fileName: 'fake.bin',
+        expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+      );
+  @override
+  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(String evidenceId) async => const [];
+  @override
+  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(String attachmentId) async =>
+      EvidenceAttachmentDownload(
+        id: attachmentId,
+        url: Uri.parse('https://example.com/download'),
+        contentType: 'application/octet-stream',
+        fileName: 'fake.bin',
+        expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+      );
   @override
   Future<TripInsightSummary> getTripInsights(String guideId) async =>
       const TripInsightSummary('g1', 0, false, null, null);
@@ -1520,5 +1572,72 @@ testWidgets('license panel screen renders empty state and create default action'
       matching: find.byType(Semantics),
     );
     expect(sem, findsWidgets);
+  });
+  testWidgets('verified trips attach file button is accessible when unlocked', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          searchResult: SearchResult(1, const [], [paid]),
+          unlocked: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Discover guides');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    final attachButton = find.widgetWithText(OutlinedButton, 'Attach file');
+    expect(attachButton, findsOneWidget);
+    final widget = tester.widget<OutlinedButton>(attachButton);
+    expect(widget.onPressed, isNotNull);
+  });
+  testWidgets('admin operations screen shows evidence attachment review controls', (
+    tester,
+  ) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'admin@example.com',
+      'Admin',
+      null,
+      ['Administrator'],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    final navigatorContext = tester.element(find.byType(Scaffold));
+    Navigator.of(navigatorContext).pushNamed('/admin/operations');
+    await tester.pumpAndSettle();
+    expect(find.text('Admin operations'), findsOneWidget);
+    expect(
+      find.text('Evidence attachments review'),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsWidgets);
+    expect(
+      find.widgetWithText(FilledButton, 'Load attachments'),
+      findsOneWidget,
+    );
   });
 }

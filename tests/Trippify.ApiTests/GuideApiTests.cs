@@ -85,5 +85,10 @@ public sealed class GuideApiTests(TrippifyFactory factory) : IClassFixture<Tripp
     private static async Task<AppUser> CreateCreator(IServiceProvider services, string email) { await using var scope = services.CreateAsyncScope(); var manager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); var user = new AppUser { Id = Guid.NewGuid(), UserName = email, Email = email, EmailConfirmed = true }; Assert.True((await manager.CreateAsync(user, Password)).Succeeded); db.CreatorProfiles.Add(new CreatorProfile { UserId = user.Id, Slug = user.Id.ToString("N"), Status = CreatorStatus.Active }); await db.SaveChangesAsync(); return user; }
     private static async Task<string> Login(HttpClient client, string email) { var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = Password }); response.EnsureSuccessStatusCode(); return (await Json(response)).GetProperty("accessToken").GetString()!; }
     private async Task WithDb(Func<AppDbContext, Task> action) { await using var scope = factory.Services.CreateAsyncScope(); await action(scope.ServiceProvider.GetRequiredService<AppDbContext>()); }
-    private sealed class ThrowingStorage : IObjectStorage { public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => throw new IOException("offline"); }
+    private sealed class ThrowingStorage : IObjectStorage
+    {
+        public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => throw new IOException("offline");
+        public Task DeleteAsync(string key, CancellationToken cancellationToken) => throw new IOException("offline");
+        public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken) => throw new IOException("offline");
+    }
 }

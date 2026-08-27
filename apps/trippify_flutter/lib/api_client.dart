@@ -161,7 +161,24 @@ abstract interface class AppApi {
     required String kind,
     required String body,
     String? redactedReference,
+    List<String> attachmentIds = const [],
   });
+  Future<EvidenceAttachmentStageResult> stageEvidenceAttachment({
+    required String fileName,
+    required String contentType,
+    required int sizeBytes,
+    required String sha256,
+  });
+  Future<EvidenceAttachmentSummary> uploadEvidenceAttachmentContent({
+    required String attachmentId,
+    required List<int> bytes,
+  });
+  Future<List<EvidenceAttachmentSummary>> listEvidenceStagedAttachments();
+  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(String evidenceId);
+  Future<void> removeEvidenceAttachment(String attachmentId);
+  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId);
+  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(String evidenceId);
+  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(String attachmentId);
   Future<TripInsightSummary> getTripInsights(String guideId);
   Future<void> submitTripInsight(
     String guideId, {
@@ -525,6 +542,122 @@ class VerifiedBadge {
   final bool verified;
   final int approvedEvidenceCount;
   final DateTime? firstGrantedAt, lastGrantedAt;
+}
+
+class EvidenceAttachmentSummary {
+  const EvidenceAttachmentSummary({
+    required this.id,
+    required this.fileName,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.state,
+    required this.createdAt,
+    this.linkedAt,
+    this.scanFailureCode,
+  });
+  final String id;
+  final String fileName;
+  final String contentType;
+  final int sizeBytes;
+  final String state;
+  final DateTime createdAt;
+  final DateTime? linkedAt;
+  final String? scanFailureCode;
+
+  bool get isReady => state == 'Ready';
+  bool get isScanning => state == 'Scanning';
+  bool get isRejected => state == 'Rejected';
+  bool get isStaged => state == 'Staged';
+
+  factory EvidenceAttachmentSummary.fromJson(Map<String, dynamic> v) {
+    return EvidenceAttachmentSummary(
+      id: v['id'] as String,
+      fileName: v['fileName'] as String,
+      contentType: v['contentType'] as String,
+      sizeBytes: (v['sizeBytes'] as num).toInt(),
+      state: v['state'] as String,
+      createdAt: DateTime.parse(v['createdAt'] as String),
+      linkedAt: _parseDate(v['linkedAt']),
+      scanFailureCode: v['scanFailureCode'] as String?,
+    );
+  }
+
+  static DateTime? _parseDate(Object? value) {
+    if (value is String && value.isNotEmpty) return DateTime.parse(value);
+    return null;
+  }
+}
+
+class EvidenceAttachmentReviewerView {
+  const EvidenceAttachmentReviewerView({
+    required this.id,
+    required this.fileName,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.state,
+    this.scanFailureCode,
+  });
+  final String id;
+  final String fileName;
+  final String contentType;
+  final int sizeBytes;
+  final String state;
+  final String? scanFailureCode;
+
+  factory EvidenceAttachmentReviewerView.fromJson(Map<String, dynamic> v) {
+    return EvidenceAttachmentReviewerView(
+      id: v['id'] as String,
+      fileName: v['fileName'] as String,
+      contentType: v['contentType'] as String,
+      sizeBytes: (v['sizeBytes'] as num).toInt(),
+      state: v['state'] as String,
+      scanFailureCode: v['scanFailureCode'] as String?,
+    );
+  }
+}
+
+class EvidenceAttachmentDownload {
+  const EvidenceAttachmentDownload({
+    required this.id,
+    required this.url,
+    required this.contentType,
+    required this.fileName,
+    required this.expiresAt,
+  });
+  final String id;
+  final Uri url;
+  final String contentType;
+  final String fileName;
+  final DateTime expiresAt;
+
+  factory EvidenceAttachmentDownload.fromJson(Map<String, dynamic> v) {
+    return EvidenceAttachmentDownload(
+      id: v['id'] as String,
+      url: Uri.parse(v['url'] as String),
+      contentType: v['contentType'] as String,
+      fileName: v['fileName'] as String,
+      expiresAt: DateTime.parse(v['expiresAt'] as String),
+    );
+  }
+}
+
+class EvidenceAttachmentStageResult {
+  const EvidenceAttachmentStageResult({
+    required this.attachmentId,
+    required this.storageKey,
+    required this.expiresAt,
+  });
+  final String attachmentId;
+  final String storageKey;
+  final DateTime expiresAt;
+
+  factory EvidenceAttachmentStageResult.fromJson(Map<String, dynamic> v) {
+    return EvidenceAttachmentStageResult(
+      attachmentId: v['attachmentId'] as String,
+      storageKey: v['storageKey'] as String,
+      expiresAt: DateTime.parse(v['expiresAt'] as String),
+    );
+  }
 }
 
 class InsightAggregate {
@@ -1692,13 +1825,97 @@ class ApiClient implements AppApi {
     required String kind,
     required String body,
     String? redactedReference,
+    List<String> attachmentIds = const [],
   }) =>
       _json('POST', '/api/v1/guides/$guideId/evidence', {
         'kind': kind,
         'body': body,
         if (redactedReference != null && redactedReference.isNotEmpty)
           'redactedReference': redactedReference,
+        if (attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
       });
+
+  @override
+  Future<EvidenceAttachmentStageResult> stageEvidenceAttachment({
+    required String fileName,
+    required String contentType,
+    required int sizeBytes,
+    required String sha256,
+  }) async {
+    final v = await _json('POST', '/api/v1/evidence/attachments', {
+      'fileName': fileName,
+      'contentType': contentType,
+      'sizeBytes': sizeBytes,
+      'sha256': sha256,
+    });
+    return EvidenceAttachmentStageResult.fromJson(v);
+  }
+
+  @override
+  Future<EvidenceAttachmentSummary> uploadEvidenceAttachmentContent({
+    required String attachmentId,
+    required List<int> bytes,
+  }) async {
+    final token = await _tokens.read();
+    final headers = {
+      'Content-Type': 'application/octet-stream',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+    final uri = baseUri.resolve('/api/v1/evidence/attachments/$attachmentId/content');
+    final response = await _client.put(uri, headers: headers, body: bytes);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401 && token != null) await _tokens.write(null);
+      throw ApiException(response.statusCode, _extractError(response.body));
+    }
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return EvidenceAttachmentSummary.fromJson(decoded);
+  }
+
+  @override
+  Future<List<EvidenceAttachmentSummary>> listEvidenceStagedAttachments() async {
+    final v = await _json('GET', '/api/v1/evidence/attachments', null);
+    final list = (v as List?) ?? const [];
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(EvidenceAttachmentSummary.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(String evidenceId) async {
+    final v = await _json('GET', '/api/v1/evidence/$evidenceId/attachments', null);
+    final list = (v as List?) ?? const [];
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(EvidenceAttachmentSummary.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<void> removeEvidenceAttachment(String attachmentId) =>
+      _request('DELETE', '/api/v1/evidence/attachments/$attachmentId', null);
+
+  @override
+  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId) async {
+    final v = await _json('GET', '/api/v1/evidence/attachments/$attachmentId/download', null);
+    return EvidenceAttachmentDownload.fromJson(v);
+  }
+
+  @override
+  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(String evidenceId) async {
+    final v = await _json('GET', '/api/v1/admin/evidence/$evidenceId/attachments', null);
+    final list = (v as List?) ?? const [];
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(EvidenceAttachmentReviewerView.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(String attachmentId) async {
+    final v = await _json('GET', '/api/v1/admin/evidence/attachments/$attachmentId/download', null);
+    return EvidenceAttachmentDownload.fromJson(v);
+  }
 
   @override
   Future<TripInsightSummary> getTripInsights(String guideId) async {
@@ -2447,6 +2664,7 @@ class ApiClient implements AppApi {
         body: jsonEncode(body),
       ),
       'PUT' => await _client.put(uri, headers: headers, body: jsonEncode(body)),
+      'DELETE' => await _client.delete(uri, headers: headers, body: jsonEncode(body)),
       _ => throw ArgumentError.value(method),
     };
     if (response.statusCode < 200 || response.statusCode >= 300) {

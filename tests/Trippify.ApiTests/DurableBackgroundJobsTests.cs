@@ -157,6 +157,39 @@ public sealed class DurableBackgroundJobsTests(TrippifyFactory factory) : IClass
         Assert.Null(cancelled.LeaseOwner);
     }
 
+    [Fact]
+    public async Task Evidence_attachment_cleanup_deletes_rejected_expired_and_unattached_files_idempotently()
+    {
+        var owner = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var rejectedId = Guid.NewGuid();
+        var expiredId = Guid.NewGuid();
+        var unattachedExpiredId = Guid.NewGuid();
+        await WithDb(async db =>
+        {
+            db.Users.Add(new AppUser { Id = owner, UserName = "jobs-att@example.com", Email = "jobs-att@example.com" });
+            db.EvidenceAttachments.AddRange(
+                new EvidenceAttachment { Id = rejectedId, OwnerUserId = owner, StorageKey = "evidence/rejected", FileName = "x.jpg", ContentType = "image/jpeg", SizeBytes = 1024, Sha256 = new string('1', 64), State = EvidenceAttachmentState.Rejected, CreatedAt = now.AddHours(-2), ExpiresAt = now.AddHours(-1), DeletedAt = now.AddHours(-2) },
+                new EvidenceAttachment { Id = expiredId, OwnerUserId = owner, StorageKey = "evidence/expired", FileName = "y.jpg", ContentType = "image/jpeg", SizeBytes = 1024, Sha256 = new string('2', 64), State = EvidenceAttachmentState.Staged, CreatedAt = now.AddHours(-2), ExpiresAt = now.AddHours(-1) },
+                new EvidenceAttachment { Id = unattachedExpiredId, OwnerUserId = owner, StorageKey = "evidence/unattached", FileName = "z.jpg", ContentType = "image/jpeg", SizeBytes = 1024, Sha256 = new string('3', 64), State = EvidenceAttachmentState.Ready, CreatedAt = now.AddHours(-30), ExpiresAt = now.AddHours(-1) });
+            await db.SaveChangesAsync();
+        });
+        await using var enqueueScope = factory.Services.CreateAsyncScope();
+        var queue = enqueueScope.ServiceProvider.GetRequiredService<IBackgroundJobQueue>();
+        await queue.EnqueueAsync(BackgroundJobTypes.EvidenceAttachmentCleanup, JsonSerializer.Serialize(new EvidenceAttachmentCleanupPayload()), default, idempotencyKey: $"cleanup-test:{Guid.NewGuid()}");
+        await Process();
+        await Process();
+        await WithDb(async db =>
+        {
+            foreach (var id in new[] { rejectedId, expiredId, unattachedExpiredId })
+            {
+                var row = await db.EvidenceAttachments.SingleAsync(x => x.Id == id);
+                Assert.Equal(EvidenceAttachmentState.Deleted, row.State);
+                Assert.NotNull(row.DeletedAt);
+            }
+        });
+    }
+
     private async Task Process()
     {
         await using var scope = factory.Services.CreateAsyncScope();

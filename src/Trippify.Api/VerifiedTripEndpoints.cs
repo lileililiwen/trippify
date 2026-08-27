@@ -17,6 +17,10 @@ public static class VerifiedTripEndpoints
     {
         var group = app.MapGroup("/api/v1").RequireAuthorization();
         group.MapPost("/guides/{guideId:guid}/evidence", SubmitEvidence);
+        group.MapPost("/guides/{guideId:guid}/evidence/{evidenceId:guid}/attachments", AttachToEvidence);
+        group.MapGet("/evidence/{evidenceId:guid}/attachments", ListOwnAttachments);
+        group.MapDelete("/evidence/attachments/{attachmentId:guid}", RemoveOwnAttachment);
+        group.MapGet("/evidence/attachments/{attachmentId:guid}/download", DownloadOwnAttachment);
         group.MapPost("/guides/{guideId:guid}/insights", SubmitInsight);
 
         var publicGroup = app.MapGroup("/api/v1").AllowAnonymous();
@@ -27,6 +31,8 @@ public static class VerifiedTripEndpoints
         adminGroup.MapPost("/evidence/{evidenceId:guid}/review", ReviewEvidence);
         adminGroup.MapDelete("/evidence/{evidenceId:guid}", DeleteEvidence);
         adminGroup.MapDelete("/guides/{guideId:guid}/badge", RevokeBadge);
+        adminGroup.MapGet("/evidence/{evidenceId:guid}/attachments", ListEvidenceAttachmentsForReviewer);
+        adminGroup.MapGet("/evidence/attachments/{attachmentId:guid}/download", DownloadAttachmentForReviewer);
     }
 
     private static async Task<IResult> SubmitEvidence(Guid guideId, SubmitEvidenceRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
@@ -41,6 +47,39 @@ public static class VerifiedTripEndpoints
             return Results.Conflict(new Dictionary<string, string[]> { ["evidence"] = ["Only one active evidence submission per guide is allowed."] });
         var errors = ValidateEvidence(request);
         if (errors.Count > 0) return Results.ValidationProblem(errors);
+        var attachmentIds = (request.AttachmentIds ?? new List<Guid>()).Distinct().ToArray();
+        if (attachmentIds.Length > EvidenceAttachmentRules.MaxAttachmentsPerEvidence)
+        {
+            errors["attachmentIds"] = [$"No more than {EvidenceAttachmentRules.MaxAttachmentsPerEvidence} attachments may be linked to a single evidence submission."];
+            return Results.ValidationProblem(errors);
+        }
+        if (attachmentIds.Length > 0)
+        {
+            var owned = await db.EvidenceAttachments.Where(x => attachmentIds.Contains(x.Id)).ToListAsync();
+            if (owned.Count != attachmentIds.Length)
+            {
+                errors["attachmentIds"] = ["One or more attachments could not be found."];
+                return Results.ValidationProblem(errors);
+            }
+            foreach (var attachment in owned)
+            {
+                if (attachment.OwnerUserId != user)
+                {
+                    errors["attachmentIds"] = ["You can only attach files you uploaded."];
+                    return Results.ValidationProblem(errors);
+                }
+                if (attachment.State != EvidenceAttachmentState.Ready)
+                {
+                    errors["attachmentIds"] = ["One or more attachments are not ready. Wait for the scan to finish or upload a new file."];
+                    return Results.ValidationProblem(errors);
+                }
+                if (attachment.DeletedAt is not null || attachment.EvidenceId is not null)
+                {
+                    errors["attachmentIds"] = ["One or more attachments are no longer available."];
+                    return Results.ValidationProblem(errors);
+                }
+            }
+        }
         var now = clock.UtcNow;
         var evidence = new TripEvidence
         {
@@ -55,6 +94,15 @@ public static class VerifiedTripEndpoints
             RetentionDeadline = now.Add(RetentionPeriod),
         };
         db.TripEvidence.Add(evidence);
+        if (attachmentIds.Length > 0)
+        {
+            var staged = await db.EvidenceAttachments.Where(x => attachmentIds.Contains(x.Id)).ToListAsync();
+            foreach (var attachment in staged)
+            {
+                attachment.EvidenceId = evidence.Id;
+                attachment.LinkedAt = now;
+            }
+        }
         db.BackgroundJobs.Add(new BackgroundJob
         {
             Id = Guid.NewGuid(), Type = BackgroundJobTypes.EvidenceRetention,
@@ -64,6 +112,122 @@ public static class VerifiedTripEndpoints
         await db.SaveChangesAsync();
         VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-submitted"));
         return EvidenceCreatedResult(evidence);
+    }
+
+    private static async Task<IResult> AttachToEvidence(Guid guideId, Guid evidenceId, AttachEvidenceAttachmentsRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    {
+        var user = IdentityEndpoints.CurrentUserId(principal);
+        var evidence = await db.TripEvidence.SingleOrDefaultAsync(x => x.Id == evidenceId && x.DeletedAt == null);
+        if (evidence is null) return Results.NotFound();
+        if (evidence.GuideId != guideId || evidence.UserId != user) return Results.Forbid();
+        if (evidence.Status != EvidenceStatus.Pending) return Results.Conflict(new Dictionary<string, string[]> { ["evidence"] = ["Only pending evidence accepts attachments."] });
+        if (request.AttachmentIds is null || request.AttachmentIds.Count == 0)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachmentIds"] = ["At least one attachment is required."] });
+        var distinctIds = request.AttachmentIds.Distinct().ToArray();
+        if (distinctIds.Length > EvidenceAttachmentRules.MaxAttachmentsPerEvidence)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachmentIds"] = [$"No more than {EvidenceAttachmentRules.MaxAttachmentsPerEvidence} attachments may be linked to a single evidence submission."] });
+        var now = clock.UtcNow;
+        var owned = await db.EvidenceAttachments.Where(x => distinctIds.Contains(x.Id)).ToListAsync();
+        if (owned.Count != distinctIds.Length)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachmentIds"] = ["One or more attachments could not be found."] });
+        foreach (var attachment in owned)
+        {
+            if (attachment.OwnerUserId != user)
+                return Results.Forbid();
+            if (attachment.EvidenceId is not null && attachment.EvidenceId != evidenceId)
+                return Results.Conflict(new Dictionary<string, string[]> { ["attachmentIds"] = ["One or more attachments are already linked to a different evidence submission."] });
+            if (attachment.State != EvidenceAttachmentState.Ready)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachmentIds"] = ["One or more attachments are not ready to be linked. Wait for the scan to finish or upload a new file."] });
+            if (attachment.DeletedAt is not null)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachmentIds"] = ["One or more attachments have been deleted."] });
+        }
+        foreach (var attachment in owned)
+        {
+            attachment.EvidenceId = evidenceId;
+            attachment.LinkedAt = now;
+        }
+        await db.SaveChangesAsync();
+        VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-attachments-linked"));
+        return Results.Ok(new { evidenceId, attachmentIds = owned.Select(x => x.Id).ToArray() });
+    }
+
+    private static async Task<IResult> ListOwnAttachments(Guid evidenceId, ClaimsPrincipal principal, AppDbContext db)
+    {
+        var user = IdentityEndpoints.CurrentUserId(principal);
+        var evidence = await db.TripEvidence.AsNoTracking().SingleOrDefaultAsync(x => x.Id == evidenceId && x.DeletedAt == null);
+        if (evidence is null || evidence.UserId != user) return Results.NotFound();
+        var rows = await db.EvidenceAttachments.AsNoTracking()
+            .Where(x => x.EvidenceId == evidenceId && x.DeletedAt == null)
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new EvidenceAttachmentSummary(x.Id, x.FileName, x.ContentType, x.SizeBytes, x.State.ToString(), x.CreatedAt, x.LinkedAt, x.ScanFailureCode))
+            .ToListAsync();
+        return Results.Ok(rows);
+    }
+
+    private static async Task<IResult> RemoveOwnAttachment(Guid attachmentId, ClaimsPrincipal principal, AppDbContext db, IObjectStorage storage, IClock clock)
+    {
+        var user = IdentityEndpoints.CurrentUserId(principal);
+        var attachment = await db.EvidenceAttachments.SingleOrDefaultAsync(x => x.Id == attachmentId);
+        if (attachment is null) return Results.NotFound();
+        if (attachment.OwnerUserId != user) return Results.Forbid();
+        if (attachment.State == EvidenceAttachmentState.Deleted || attachment.DeletedAt is not null) return Results.NoContent();
+        var now = clock.UtcNow;
+        attachment.State = EvidenceAttachmentState.Deleted;
+        attachment.DeletedAt = now;
+        if (attachment.EvidenceId is not null)
+        {
+            var evidence = await db.TripEvidence.SingleOrDefaultAsync(x => x.Id == attachment.EvidenceId);
+            if (evidence is not null && evidence.Status == EvidenceStatus.Pending)
+            {
+                var remaining = await db.EvidenceAttachments.CountAsync(x => x.EvidenceId == evidence.Id && x.DeletedAt == null);
+                if (remaining == 0)
+                {
+                    evidence.Body = string.Empty;
+                    evidence.RedactedReference = string.Empty;
+                }
+            }
+        }
+        await db.SaveChangesAsync();
+        try { await storage.DeleteAsync(attachment.StorageKey, default); } catch (Exception error) when (error is IOException or NotSupportedException) { /* best-effort */ }
+        VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-attachment-removed"));
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DownloadOwnAttachment(Guid attachmentId, ClaimsPrincipal principal, AppDbContext db, IObjectStorage storage, IClock clock)
+    {
+        var user = IdentityEndpoints.CurrentUserId(principal);
+        var attachment = await db.EvidenceAttachments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == attachmentId);
+        if (attachment is null || attachment.OwnerUserId != user) return Results.NotFound();
+        if (attachment.State != EvidenceAttachmentState.Ready || attachment.DeletedAt is not null)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachment"] = ["Attachment is not available for download."] });
+        var evidence = await db.TripEvidence.AsNoTracking().SingleOrDefaultAsync(x => x.Id == attachment.EvidenceId && x.DeletedAt == null);
+        if (evidence is null) return Results.NotFound();
+        var uri = await storage.CreateSignedReadAsync(attachment.StorageKey, EvidenceAttachmentRules.DownloadLifetime, default);
+        VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-attachment-downloaded"));
+        return Results.Ok(new EvidenceAttachmentDownloadResponse(attachment.Id, uri, attachment.ContentType, attachment.FileName, clock.UtcNow.Add(EvidenceAttachmentRules.DownloadLifetime)));
+    }
+
+    private static async Task<IResult> ListEvidenceAttachmentsForReviewer(Guid evidenceId, AppDbContext db)
+    {
+        var evidence = await db.TripEvidence.AsNoTracking().SingleOrDefaultAsync(x => x.Id == evidenceId && x.DeletedAt == null);
+        if (evidence is null) return Results.NotFound();
+        var rows = await db.EvidenceAttachments.AsNoTracking()
+            .Where(x => x.EvidenceId == evidenceId && x.DeletedAt == null)
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new EvidenceAttachmentReviewerView(x.Id, x.FileName, x.ContentType, x.SizeBytes, x.State.ToString(), x.ScanFailureCode))
+            .ToListAsync();
+        return Results.Ok(rows);
+    }
+
+    private static async Task<IResult> DownloadAttachmentForReviewer(Guid attachmentId, AppDbContext db, IObjectStorage storage, IClock clock)
+    {
+        var attachment = await db.EvidenceAttachments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == attachmentId && x.DeletedAt == null);
+        if (attachment is null) return Results.NotFound();
+        if (attachment.State != EvidenceAttachmentState.Ready)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["attachment"] = ["Attachment is not available for download."] });
+        var uri = await storage.CreateSignedReadAsync(attachment.StorageKey, EvidenceAttachmentRules.DownloadLifetime, default);
+        VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-attachment-downloaded-reviewer"));
+        return Results.Ok(new EvidenceAttachmentDownloadResponse(attachment.Id, uri, attachment.ContentType, attachment.FileName, clock.UtcNow.Add(EvidenceAttachmentRules.DownloadLifetime)));
     }
 
     private static async Task<IResult> GetBadge(Guid guideId, AppDbContext db)
@@ -102,12 +266,20 @@ public static class VerifiedTripEndpoints
         return EvidenceCreatedResult(evidence, request.Reason.Trim(), reviewer);
     }
 
-    private static async Task<IResult> DeleteEvidence(Guid evidenceId, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> DeleteEvidence(Guid evidenceId, ClaimsPrincipal principal, AppDbContext db, IClock clock, IObjectStorage storage)
     {
         var evidence = await db.TripEvidence.SingleOrDefaultAsync(x => x.Id == evidenceId);
         if (evidence is null) return Results.NotFound();
         if (evidence.DeletedAt is not null) return Results.NoContent();
-        evidence.DeletedAt = clock.UtcNow;
+        var now = clock.UtcNow;
+        var attachments = await db.EvidenceAttachments.Where(x => x.EvidenceId == evidence.Id && x.DeletedAt == null).ToListAsync();
+        foreach (var attachment in attachments)
+        {
+            attachment.State = EvidenceAttachmentState.Deleted;
+            attachment.DeletedAt = now;
+            try { await storage.DeleteAsync(attachment.StorageKey, default); } catch (Exception error) when (error is IOException or NotSupportedException) { /* best-effort */ }
+        }
+        evidence.DeletedAt = now;
         var approvedBadge = await db.VerifiedGuideBadges.SingleOrDefaultAsync(x => x.GuideId == evidence.GuideId);
         if (approvedBadge is not null && evidence.Status == EvidenceStatus.Approved && approvedBadge.ApprovedEvidenceCount > 0)
         {
@@ -228,9 +400,15 @@ public static class VerifiedTripEndpoints
     }
 }
 
-public sealed record SubmitEvidenceRequest(EvidenceKind Kind, string Body, string? RedactedReference);
+public sealed record SubmitEvidenceRequest(EvidenceKind Kind, string Body, string? RedactedReference, List<Guid>? AttachmentIds);
 public sealed record ReviewEvidenceRequest(string Decision, string Reason);
 public sealed record SubmitInsightRequest(int PartySize, int TripDays, long TotalCostMinorUnits, string CurrencyCode);
 public sealed record BadgeResponse(Guid GuideId, bool Verified, int ApprovedEvidenceCount, DateTimeOffset? FirstGrantedAt, DateTimeOffset? LastGrantedAt);
 public sealed record InsightAggregate(string CurrencyCode, int Count, double AveragePartySize, double AverageTripDays, double AverageTotalCostMinorUnits);
 public sealed record InsightSummaryResponse(Guid GuideId, int SubmissionCount, bool MeetsKAnonymity, InsightAggregate? Median, InsightAggregate? Average, InsightAggregate? MinMax);
+public sealed record AttachEvidenceAttachmentsRequest(List<Guid> AttachmentIds);
+public sealed record EvidenceAttachmentSummary(Guid Id, string FileName, string ContentType, long SizeBytes, string State, DateTimeOffset CreatedAt, DateTimeOffset? LinkedAt, string? ScanFailureCode);
+public sealed record EvidenceAttachmentReviewerView(Guid Id, string FileName, string ContentType, long SizeBytes, string State, string? ScanFailureCode);
+public sealed record EvidenceAttachmentDownloadResponse(Guid Id, Uri Url, string ContentType, string FileName, DateTimeOffset ExpiresAt);
+public sealed record StageEvidenceAttachmentRequest(string FileName, string ContentType, long SizeBytes, string Sha256);
+public sealed record StageEvidenceAttachmentResponse(Guid AttachmentId, string StorageKey, DateTimeOffset ExpiresAt);

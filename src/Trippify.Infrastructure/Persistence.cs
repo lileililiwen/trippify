@@ -38,6 +38,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<EvidenceReviewEntry> EvidenceReviews => Set<EvidenceReviewEntry>();
     public DbSet<VerifiedGuideBadge> VerifiedGuideBadges => Set<VerifiedGuideBadge>();
     public DbSet<ActualTripMetric> ActualTripMetrics => Set<ActualTripMetric>();
+    public DbSet<EvidenceAttachment> EvidenceAttachments => Set<EvidenceAttachment>();
     public DbSet<CreatorFollow> CreatorFollows => Set<CreatorFollow>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -110,6 +111,8 @@ public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider,
     }
 
     public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => Task.FromResult(new Uri("file:///tmp/trippify/" + Uri.EscapeDataString(key)));
+    public Task DeleteAsync(string key, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken) => Task.FromResult(new Uri($"file:///tmp/trippify/{Uri.EscapeDataString(key)}?expires={DateTimeOffset.UtcNow.Add(lifetime):o}"));
     public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
     {
         return _resend?.SendAsync(recipient, subject, body, cancellationToken) ?? Task.CompletedTask;

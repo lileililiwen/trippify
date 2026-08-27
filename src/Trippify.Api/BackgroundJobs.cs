@@ -10,12 +10,16 @@ public static class BackgroundJobTypes
 {
     public const string EvidenceRetention = "evidence-retention";
     public const string NotificationDelivery = "notification-delivery";
+    public const string EvidenceAttachmentScan = "evidence-attachment-scan";
+    public const string EvidenceAttachmentCleanup = "evidence-attachment-cleanup";
 }
 
 public sealed record EvidenceRetentionPayload(Guid EvidenceId);
 public sealed record NotificationDeliveryPayload(Guid UserId, NotificationKind Kind, string Title, string Body, string? TargetSlug, Guid? TargetGuideId);
+public sealed record EvidenceAttachmentScanPayload(Guid AttachmentId);
+public sealed record EvidenceAttachmentCleanupPayload();
 
-public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippify.Application.IEmailSender email, ILogger<BackgroundJobProcessor> logger)
+public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippify.Application.IEmailSender email, IObjectStorage storage, ILogger<BackgroundJobProcessor> logger)
 {
     private static readonly Meter Meter = new("Trippify.BackgroundJobs");
     private static readonly Counter<long> Outcomes = Meter.CreateCounter<long>("trippify.backgroundjobs.outcomes");
@@ -43,6 +47,12 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
             {
                 case BackgroundJobTypes.EvidenceRetention:
                     await HandleEvidenceRetention(JsonSerializer.Deserialize<EvidenceRetentionPayload>(job.Payload)!, cancellationToken);
+                    break;
+                case BackgroundJobTypes.EvidenceAttachmentScan:
+                    await HandleEvidenceAttachmentScan(JsonSerializer.Deserialize<EvidenceAttachmentScanPayload>(job.Payload)!, cancellationToken);
+                    break;
+                case BackgroundJobTypes.EvidenceAttachmentCleanup:
+                    await HandleEvidenceAttachmentCleanup(cancellationToken);
                     break;
                 case BackgroundJobTypes.NotificationDelivery:
                     await HandleNotification(JsonSerializer.Deserialize<NotificationDeliveryPayload>(job.Payload)!, job.Id, cancellationToken);
@@ -116,6 +126,7 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
     {
         var evidence = await db.TripEvidence.SingleOrDefaultAsync(x => x.Id == payload.EvidenceId, cancellationToken);
         if (evidence is null || evidence.DeletedAt is not null || evidence.RetentionDeadline > clock.UtcNow) return;
+        await DeleteEvidenceAttachmentsAsync(evidence.Id, cancellationToken);
         evidence.DeletedAt = clock.UtcNow;
         var badge = await db.VerifiedGuideBadges.SingleOrDefaultAsync(x => x.GuideId == evidence.GuideId, cancellationToken);
         if (badge is not null)
@@ -126,6 +137,50 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
         evidence.Body = string.Empty;
         evidence.RedactedReference = string.Empty;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task HandleEvidenceAttachmentScan(EvidenceAttachmentScanPayload payload, CancellationToken cancellationToken)
+    {
+        var attachment = await db.EvidenceAttachments.SingleOrDefaultAsync(x => x.Id == payload.AttachmentId, cancellationToken);
+        if (attachment is null || attachment.State != EvidenceAttachmentState.Scanning) return;
+        // Local-mode scanner only enforces state transitions; production deployments
+        // would replace this with a real malware scanner via IObjectStorage or a
+        // dedicated IScanner abstraction. Idempotency is preserved by re-checking
+        // the current state before transitioning.
+        attachment.State = EvidenceAttachmentState.Ready;
+        attachment.ScanFailureCode = null;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task HandleEvidenceAttachmentCleanup(CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow;
+        var stale = await db.EvidenceAttachments
+            .Where(x => x.State == EvidenceAttachmentState.Rejected ||
+                (x.DeletedAt == null && (
+                    (x.State == EvidenceAttachmentState.Staged && x.ExpiresAt <= now) ||
+                    (x.State == EvidenceAttachmentState.Scanning && x.ExpiresAt <= now) ||
+                    (x.EvidenceId == null && x.ExpiresAt <= now))))
+            .ToListAsync(cancellationToken);
+        foreach (var attachment in stale)
+        {
+            attachment.State = EvidenceAttachmentState.Deleted;
+            if (attachment.DeletedAt is null) attachment.DeletedAt = now;
+            try { await storage.DeleteAsync(attachment.StorageKey, cancellationToken); } catch (Exception error) when (error is IOException or NotSupportedException) { /* best-effort */ }
+        }
+        if (stale.Count > 0) await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task DeleteEvidenceAttachmentsAsync(Guid evidenceId, CancellationToken cancellationToken)
+    {
+        var attachments = await db.EvidenceAttachments.Where(x => x.EvidenceId == evidenceId && x.DeletedAt == null).ToListAsync(cancellationToken);
+        var now = clock.UtcNow;
+        foreach (var attachment in attachments)
+        {
+            attachment.State = EvidenceAttachmentState.Deleted;
+            attachment.DeletedAt = now;
+            try { await storage.DeleteAsync(attachment.StorageKey, cancellationToken); } catch (Exception error) when (error is IOException or NotSupportedException) { /* best-effort */ }
+        }
     }
 
     private async Task HandleNotification(NotificationDeliveryPayload payload, Guid jobId, CancellationToken cancellationToken)
@@ -162,6 +217,9 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
 
 public sealed class BackgroundJobWorker(IServiceScopeFactory scopes, IConfiguration configuration) : BackgroundService
 {
+    private static readonly TimeSpan AttachmentCleanupInterval = TimeSpan.FromMinutes(15);
+    private DateTimeOffset _nextAttachmentCleanup = DateTimeOffset.UtcNow;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!configuration.GetValue("BackgroundJobs:WorkersEnabled", true)) return;
@@ -169,6 +227,19 @@ public sealed class BackgroundJobWorker(IServiceScopeFactory scopes, IConfigurat
         while (!stoppingToken.IsCancellationRequested)
         {
             await using var scope = scopes.CreateAsyncScope();
+            var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+            var now = clock.UtcNow;
+            if (now >= _nextAttachmentCleanup)
+            {
+                var queue = scope.ServiceProvider.GetRequiredService<IBackgroundJobQueue>();
+                await queue.EnqueueAsync(
+                    BackgroundJobTypes.EvidenceAttachmentCleanup,
+                    System.Text.Json.JsonSerializer.Serialize(new EvidenceAttachmentCleanupPayload()),
+                    stoppingToken,
+                    idempotencyKey: $"evidence-attachment-cleanup:{now:yyyyMMddHH}",
+                    availableAt: now);
+                _nextAttachmentCleanup = now.Add(AttachmentCleanupInterval);
+            }
             var count = await scope.ServiceProvider.GetRequiredService<BackgroundJobProcessor>().ProcessBatchAsync(workerId, 10, stoppingToken);
             if (count == 0) await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         }
