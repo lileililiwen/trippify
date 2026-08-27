@@ -2,15 +2,85 @@
 
 Structured travel-guide marketplace using ASP.NET Core 8, PostgreSQL/PostGIS, and Flutter.
 
-## Development
+## Prerequisites
 
-1. `docker compose up -d postgres` (PostgreSQL is exposed on development port `5437`).
-2. `/home/paul/.dotnet/dotnet restore Trippify.sln`
-3. `/home/paul/.dotnet/dotnet ef database update --project src/Trippify.Infrastructure --startup-project src/Trippify.Api`
-4. `/home/paul/.dotnet/dotnet run --project src/Trippify.Api`
-5. Run the Flutter app with `--dart-define API_BASE_URL=http://localhost:5000`.
+- .NET SDK 8.0 (`dotnet --version` should print `8.0.x`)
+- PostgreSQL 16 with the PostGIS extension (bundled via Docker in `docker-compose.yml`)
+- Flutter SDK 3.13+ with Dart 3
+- `dotnet-ef` CLI (`dotnet tool install dotnet-ef -g`)
+- Optional: Docker (recommended for spinning up the database locally)
 
-Swagger is at `/swagger`; liveness and readiness are `/health/live` and `/health/ready`. Production must inject database and provider secrets. Never commit secrets.
+## Repository layout
+
+- `src/Trippify.Api` — HTTP API, endpoints, OpenAPI / Swagger.
+- `src/Trippify.Application` — shared application services and adapter contracts (`IAiAssistant`, `IEmailSender`, etc.).
+- `src/Trippify.Domain` — shared primitives.
+- `src/Trippify.Infrastructure` — EF Core entities, migrations, and `AppDbContext`.
+- `apps/trippify_flutter` — Flutter mobile/web client.
+- `tests/Trippify.ApiTests` — xUnit suite for the HTTP API.
+- `tests/Trippify.ArchitectureTests` — architectural invariants.
+- `docs/` — design notes for every domain.
+- `openspec/changes/*` — spec-driven proposals.
+
+## Quickstart (Docker database, local API + Flutter)
+
+```sh
+# 1. Bring up PostgreSQL/PostGIS on port 5437.
+docker compose up -d postgres
+
+# 2. Restore + build.
+dotnet restore Trippify.sln
+dotnet build Trippify.sln
+
+# 3. Apply EF Core migrations.
+dotnet ef database update \
+  --project src/Trippify.Infrastructure \
+  --startup-project src/Trippify.Api
+
+# 4. Run the API.
+dotnet run --project src/Trippify.Api
+# → http://localhost:5000  (Swagger UI at /swagger)
+
+# 5. Run the Flutter app (new terminal).
+cd apps/trippify_flutter
+flutter pub get
+flutter run --dart-define API_BASE_URL=http://localhost:5000
+```
+
+## Quickstart (fully self-hosted with Docker)
+
+```sh
+# Bring up PostgreSQL and the API together.
+docker compose up --build
+
+# Apply pending migrations through the admin API once the container is healthy.
+curl -X POST http://localhost:8080/api/v1/admin/system/upgrade \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+The image pins ASP.NET Core 8 and runs `dotnet Trippify.Api.dll` on port `8080`. Connection strings come from `ConnectionStrings__Postgres`; `SelfHosted__RunMigrationsOnStartup=true` lets the bootstrap apply migrations automatically.
+
+## Tests
+
+```sh
+# Backend
+dotnet test tests/Trippify.ApiTests --nologo
+dotnet test tests/Trippify.ArchitectureTests --nologo
+
+# Frontend
+cd apps/trippify_flutter
+flutter test
+```
+
+## Deployment notes
+
+Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, and any other provider secrets through your secret store. Never commit secrets.
+
+The `docker compose` stack is intentionally minimal: it starts the database and the API and waits for the DB healthcheck. For production deployments, swap the `docker-compose.yml` for your orchestrator of choice (Kubernetes, ECS, etc.) and reuse the multi-stage `src/Trippify.Api/Dockerfile`.
+
+After upgrading the binary, call `POST /api/v1/admin/system/upgrade` once to apply pending migrations deterministically. Capture a backup via `POST /api/v1/admin/system/backup` before every upgrade; the row stores the snapshot payload with audit metadata.
+
+## Documentation map
 
 Identity security, privacy projections, and operator controls are documented in [`docs/identity.md`](docs/identity.md).
 Structured guide ownership, concurrency, privacy, and operations are documented in [`docs/guides.md`](docs/guides.md).
