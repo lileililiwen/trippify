@@ -212,6 +212,27 @@ class FakeApi implements AppApi {
   Future<void> reportReview(String reviewId, String reason) async {}
   @override
   Future<void> submitFeedback(String guideId, String body) async {}
+  @override
+  Future<VerifiedBadge> getVerifiedBadge(String guideId) async =>
+      VerifiedBadge(guideId, false, 0, null, null);
+  @override
+  Future<void> submitEvidence(
+    String guideId, {
+    required String kind,
+    required String body,
+    String? redactedReference,
+  }) async {}
+  @override
+  Future<TripInsightSummary> getTripInsights(String guideId) async =>
+      const TripInsightSummary('g1', 0, false, null, null);
+  @override
+  Future<void> submitTripInsight(
+    String guideId, {
+    required int partySize,
+    required int tripDays,
+    required int totalCostMinorUnits,
+    required String currencyCode,
+  }) async {}
 
   @override
   Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
@@ -600,5 +621,93 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Submit review'));
     await tester.pumpAndSettle();
     expect(find.text('Review submitted.'), findsOneWidget);
+  });
+  testWidgets('verified trips section shows empty and locked states', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(find.text('Verified trips'), findsOneWidget);
+    expect(find.text('No verified travelers yet.'), findsOneWidget);
+    expect(
+      find.text('Actual insights appear once at least five travelers opt in.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Unlock to submit verification evidence.'),
+      findsOneWidget,
+    );
+  });
+  testWidgets('verified trips unlock shows evidence form and submitted state', (
+    tester,
+  ) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+          unlocked: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    expect(find.widgetWithText(FilledButton, 'Submit evidence'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Share insights'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Evidence (50-4000 chars)'),
+      'I travelled with this guide in Osaka for three nights without issues.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Submit evidence'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'No exceptions expected during submit tap',
+    );
   });
 }

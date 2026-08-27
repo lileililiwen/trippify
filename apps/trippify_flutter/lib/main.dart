@@ -744,6 +744,12 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                   status = 'Review submitted.';
                 }),
               ),
+            const SizedBox(height: 16),
+            Text(
+              'Verified trips',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            _VerifiedTripsSection(api: widget.api, guideId: data.id, unlocked: data.unlocked, onSubmit: (message) => setState(() => status = message)),
           ],
         );
       },
@@ -863,6 +869,244 @@ class _ReviewSectionState extends State<_ReviewSection> {
       ),
     ],
   );
+}
+
+class _VerifiedTripsSection extends StatefulWidget {
+  const _VerifiedTripsSection({
+    required this.api,
+    required this.guideId,
+    required this.unlocked,
+    required this.onSubmit,
+  });
+  final AppApi api;
+  final String guideId;
+  final bool unlocked;
+  final ValueChanged<String> onSubmit;
+  @override
+  State<_VerifiedTripsSection> createState() => _VerifiedTripsSectionState();
+}
+
+class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
+  late Future<VerifiedBadge> badge;
+  late Future<TripInsightSummary> insights;
+  final body = TextEditingController();
+  String kind = 'TripJournal';
+  String? status;
+  final party = TextEditingController(text: '2');
+  final tripDays = TextEditingController(text: '5');
+  final cost = TextEditingController(text: '150000');
+  final currency = TextEditingController(text: 'JPY');
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    setState(() {
+      badge = widget.api.getVerifiedBadge(widget.guideId);
+      insights = widget.api.getTripInsights(widget.guideId);
+    });
+  }
+
+  Future<void> submitEvidence() async {
+    try {
+      await widget.api.submitEvidence(
+        widget.guideId,
+        kind: kind,
+        body: body.text.trim(),
+      );
+      body.clear();
+      setState(() => status = 'Evidence submitted for review.');
+      widget.onSubmit('Evidence submitted for review.');
+      _refresh();
+    } catch (_) {
+      setState(() => status = 'Cannot submit evidence.');
+    }
+  }
+
+  Future<void> submitInsight() async {
+    try {
+      final partyValue = int.tryParse(party.text.trim()) ?? 0;
+      final daysValue = int.tryParse(tripDays.text.trim()) ?? 0;
+      final costValue = int.tryParse(cost.text.trim()) ?? 0;
+      await widget.api.submitTripInsight(
+        widget.guideId,
+        partySize: partyValue,
+        tripDays: daysValue,
+        totalCostMinorUnits: costValue,
+        currencyCode: currency.text.trim(),
+      );
+      setState(() => status = 'Insight submitted.');
+      widget.onSubmit('Insight submitted.');
+      _refresh();
+    } catch (_) {
+      setState(() => status = 'Cannot submit insight.');
+    }
+  }
+
+  Widget _badgeView() => FutureBuilder<VerifiedBadge>(
+        future: badge,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Verification badge unavailable.'),
+            );
+          }
+          final value = snapshot.data!;
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Semantics(
+              label: value.verified ? 'Verified by travelers' : 'Not yet verified',
+              child: Text(
+                value.verified
+                    ? 'Verified by ${value.approvedEvidenceCount} traveler(s).'
+                    : 'No verified travelers yet.',
+              ),
+            ),
+          );
+        },
+      );
+
+  Widget _insightsView() => FutureBuilder<TripInsightSummary>(
+        future: insights,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Actual insights unavailable.'),
+            );
+          }
+          final value = snapshot.data!;
+          if (!value.meetsKAnonymity) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Actual insights appear once at least five travelers opt in.',
+              ),
+            );
+          }
+          final summary = value.average ?? value.median;
+          if (summary == null) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Actual insights are not yet available.'),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Semantics(
+              label: 'Average trip insights',
+              child: Text(
+                'Avg party ${summary.partySize.toStringAsFixed(1)} · '
+                '${summary.tripDays.toStringAsFixed(1)} days · '
+                '${summary.totalCostMinorUnits.toStringAsFixed(0)} ${summary.currencyCode}',
+              ),
+            ),
+          );
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _badgeView(),
+        _insightsView(),
+        if (widget.unlocked) ...[
+          DropdownButtonFormField<String>(
+            initialValue: kind,
+            decoration: const InputDecoration(labelText: 'Evidence kind'),
+            items: const [
+              DropdownMenuItem(value: 'TripJournal', child: Text('Trip journal')),
+              DropdownMenuItem(value: 'Receipt', child: Text('Receipt')),
+              DropdownMenuItem(value: 'BookingConfirmation', child: Text('Booking')),
+              DropdownMenuItem(value: 'PhotoNote', child: Text('Photo note')),
+              DropdownMenuItem(value: 'Other', child: Text('Other')),
+            ],
+            onChanged: (value) => setState(() => kind = value ?? kind),
+          ),
+          TextField(
+            controller: body,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(labelText: 'Evidence (50-4000 chars)'),
+          ),
+          FilledButton(
+            onPressed: submitEvidence,
+            child: const Text('Submit evidence'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Optional coarse insights',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: party,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Party size'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: tripDays,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Trip days'),
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: cost,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Total minor units'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: currency,
+                  decoration: const InputDecoration(labelText: 'Currency code'),
+                ),
+              ),
+            ],
+          ),
+          FilledButton(
+            onPressed: submitInsight,
+            child: const Text('Share insights'),
+          ),
+        ] else
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Unlock to submit verification evidence.'),
+          ),
+        if (status != null)
+          Semantics(liveRegion: true, child: Text(status!)),
+      ],
+    );
+  }
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {

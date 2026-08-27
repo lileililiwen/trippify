@@ -32,6 +32,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<ReviewReply> ReviewReplies => Set<ReviewReply>();
     public DbSet<ReviewReport> ReviewReports => Set<ReviewReport>();
     public DbSet<ReviewFeedback> ReviewFeedbacks => Set<ReviewFeedback>();
+    public DbSet<TripEvidence> TripEvidence => Set<TripEvidence>();
+    public DbSet<EvidenceReviewEntry> EvidenceReviews => Set<EvidenceReviewEntry>();
+    public DbSet<VerifiedGuideBadge> VerifiedGuideBadges => Set<VerifiedGuideBadge>();
+    public DbSet<ActualTripMetric> ActualTripMetrics => Set<ActualTripMetric>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

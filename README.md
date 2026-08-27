@@ -19,3 +19,4 @@ Publication rules, paid previews, and the discovery catalog are documented in [`
 Checkout, webhook-confirmed orders, ledgers, and entitlements are documented in [`docs/commerce.md`](docs/commerce.md).
 Favorites, My Trips, and permission-aware forks with provenance are documented in [`docs/library.md`](docs/library.md).
 Verified-purchaser reviews, author replies, moderation, reports, and update feedback are documented in [`docs/reviews.md`](docs/reviews.md).
+Verified trip evidence, retention, badge lifecycle, and opt-in coarse actual metrics are documented in [`docs/verified-trips.md`](docs/verified-trips.md).

@@ -76,6 +76,21 @@ abstract interface class AppApi {
   Future<Reply> replyToReview(String reviewId, String body);
   Future<void> reportReview(String reviewId, String reason);
   Future<void> submitFeedback(String guideId, String body);
+  Future<VerifiedBadge> getVerifiedBadge(String guideId);
+  Future<void> submitEvidence(
+    String guideId, {
+    required String kind,
+    required String body,
+    String? redactedReference,
+  });
+  Future<TripInsightSummary> getTripInsights(String guideId);
+  Future<void> submitTripInsight(
+    String guideId, {
+    required int partySize,
+    required int tripDays,
+    required int totalCostMinorUnits,
+    required String currencyCode,
+  });
 }
 
 class GuideSummary {
@@ -347,9 +362,49 @@ class PublicCreator {
     this.travelCountries,
   );
   final String slug;
-  final String displayName;
-  final String biography;
+  final String displayName, biography;
   final List<String> travelCountries;
+}
+
+class VerifiedBadge {
+  const VerifiedBadge(
+    this.guideId,
+    this.verified,
+    this.approvedEvidenceCount,
+    this.firstGrantedAt,
+    this.lastGrantedAt,
+  );
+  final String guideId;
+  final bool verified;
+  final int approvedEvidenceCount;
+  final DateTime? firstGrantedAt, lastGrantedAt;
+}
+
+class InsightAggregate {
+  const InsightAggregate(
+    this.currencyCode,
+    this.count,
+    this.partySize,
+    this.tripDays,
+    this.totalCostMinorUnits,
+  );
+  final String currencyCode;
+  final int count;
+  final double partySize, tripDays, totalCostMinorUnits;
+}
+
+class TripInsightSummary {
+  const TripInsightSummary(
+    this.guideId,
+    this.submissionCount,
+    this.meetsKAnonymity,
+    this.median,
+    this.average,
+  );
+  final String guideId;
+  final int submissionCount;
+  final bool meetsKAnonymity;
+  final InsightAggregate? median, average;
 }
 
 abstract interface class TokenStore {
@@ -992,6 +1047,75 @@ class ApiClient implements AppApi {
   @override
   Future<void> submitFeedback(String guideId, String body) =>
       _json('POST', '/api/v1/guides/$guideId/feedback', {'body': body});
+
+  @override
+  Future<VerifiedBadge> getVerifiedBadge(String guideId) async {
+    final v = await _json('GET', '/api/v1/guides/$guideId/evidence/badge', null);
+    return VerifiedBadge(
+      v['guideId'] as String,
+      v['verified'] as bool,
+      v['approvedEvidenceCount'] as int,
+      _parseDate(v['firstGrantedAt']),
+      _parseDate(v['lastGrantedAt']),
+    );
+  }
+
+  @override
+  Future<void> submitEvidence(
+    String guideId, {
+    required String kind,
+    required String body,
+    String? redactedReference,
+  }) =>
+      _json('POST', '/api/v1/guides/$guideId/evidence', {
+        'kind': kind,
+        'body': body,
+        if (redactedReference != null && redactedReference.isNotEmpty)
+          'redactedReference': redactedReference,
+      });
+
+  @override
+  Future<TripInsightSummary> getTripInsights(String guideId) async {
+    final v = await _json('GET', '/api/v1/guides/$guideId/insights', null);
+    return TripInsightSummary(
+      v['guideId'] as String,
+      v['submissionCount'] as int,
+      v['meetsKAnonymity'] as bool,
+      _aggregate(v['median'] as Map<String, dynamic>?),
+      _aggregate(v['average'] as Map<String, dynamic>?),
+    );
+  }
+
+  @override
+  Future<void> submitTripInsight(
+    String guideId, {
+    required int partySize,
+    required int tripDays,
+    required int totalCostMinorUnits,
+    required String currencyCode,
+  }) =>
+      _json('POST', '/api/v1/guides/$guideId/insights', {
+        'partySize': partySize,
+        'tripDays': tripDays,
+        'totalCostMinorUnits': totalCostMinorUnits,
+        'currencyCode': currencyCode,
+      });
+
+  static DateTime? _parseDate(Object? value) {
+    if (value is String && value.isNotEmpty) return DateTime.parse(value);
+    return null;
+  }
+
+  static InsightAggregate? _aggregate(Map<String, dynamic>? value) {
+    if (value == null) return null;
+    return InsightAggregate(
+      value['currencyCode'] as String,
+      value['count'] as int,
+      (value['averagePartySize'] as num).toDouble(),
+      (value['averageTripDays'] as num).toDouble(),
+      (value['averageTotalCostMinorUnits'] as num).toDouble(),
+    );
+  }
 
   Future<Map<String, dynamic>> _json(
     String method,
