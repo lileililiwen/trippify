@@ -75,7 +75,21 @@ builder.Services.AddSingleton<IEmailSender>(sp =>
 builder.Services.AddHttpClient(nameof(ResendEmailSender));
 builder.Services.AddSingleton<RestorableBackupService>();
 builder.Services.AddSingleton<IPaymentGateway, LocalPaymentGateway>();
-builder.Services.AddSingleton<IAiAssistant, LocalAiAssistant>();
+var aiOptions = AiProviderOptions.Bind(builder.Configuration);
+aiOptions.Validate();
+builder.Services.AddSingleton(aiOptions);
+builder.Services.AddSingleton<IAiAssistant>(sp =>
+{
+    var options = sp.GetRequiredService<AiProviderOptions>();
+    if (options.Provider.Equals("local", StringComparison.OrdinalIgnoreCase) || !options.Enabled)
+        return new LocalAiAssistant();
+    var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpAiAssistant));
+    client.BaseAddress = new Uri(options.Endpoint!);
+    client.Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds);
+    var logger = sp.GetRequiredService<ILogger<HttpAiAssistant>>();
+    return new HttpAiAssistant(options, client, logger);
+});
+builder.Services.AddHttpClient(nameof(HttpAiAssistant));
 builder.Services.AddScoped<IBackgroundJobQueue, DurableBackgroundJobQueue>(); builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<BackgroundJobProcessor>(); builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddTransient<Microsoft.AspNetCore.Identity.IEmailSender<AppUser>, IdentityEmailSender>();

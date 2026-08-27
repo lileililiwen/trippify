@@ -37,7 +37,7 @@ public static class AssistedImportEndpoints
         var reservation = await quotas.ReserveAsync(user, QuotaMetrics.AiImports, 1);
         if (!reservation.Succeeded) return QuotaProblem.From(reservation);
         var now = clock.UtcNow;
-        var job = new ImportJob { Id = Guid.NewGuid(), UserId = user, Kind = ImportKind.Text, SourceText = request.SourceText.Trim(), Status = ImportStatus.Queued, SubmittedAt = now };
+        var job = new ImportJob { Id = Guid.NewGuid(), UserId = user, Kind = ImportKind.Text, SourceText = SafeSource(request.SourceText.Trim()), Status = ImportStatus.Queued, SubmittedAt = now };
         db.ImportJobs.Add(job);
         await db.SaveChangesAsync();
         await ProcessInternalAsync(db, ai, clock, job);
@@ -102,6 +102,7 @@ public static class AssistedImportEndpoints
         var user = IdentityEndpoints.CurrentUserId(principal);
         var draft = await db.ImportDrafts.SingleOrDefaultAsync(x => x.Id == draftId && x.UserId == user);
         if (draft is null) return Results.NotFound();
+        if (draft.ProviderName == string.Empty) return Results.Problem("AI provenance is missing; refusing to publish.", statusCode: StatusCodes.Status409Conflict);
         draft.Status = ImportDraftStatus.Approved;
         await db.SaveChangesAsync();
         AssistedImportCommands.Add(1, new KeyValuePair<string, object?>("operation", "draft-approved"));
@@ -129,18 +130,26 @@ public static class AssistedImportEndpoints
         if (source is null) return Results.NotFound();
         var reservation = await quotas.ReserveAsync(user, QuotaMetrics.AiImports, 1);
         if (!reservation.Succeeded) return QuotaProblem.From(reservation);
-        string translated;
-        try { translated = await ai.AssistAsync(request.Body, default); }
+        var operationId = $"translation:{Guid.NewGuid():N}";
+        var assistRequest = new AiAssistRequest(AiAssistKind.Translate, SafeSource(request.Body), null, request.Locale, operationId, 16000, 16000);
+        AiAssistResult assist;
+        try { assist = await ai.AssistAsync(assistRequest, default); }
         catch { await quotas.ReleaseAsync(reservation.ReservationId!.Value, "ai-translation-failed"); throw; }
+        if (assist.Status != AiAssistStatus.Completed || string.IsNullOrEmpty(assist.Body))
+        {
+            await quotas.ReleaseAsync(reservation.ReservationId!.Value, "ai-translation-failed");
+            return Results.Problem("AI translation failed.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
         var existing = await db.Translations.SingleOrDefaultAsync(x => x.SourceDraftId == source.Id && x.Locale == request.Locale);
         if (existing is null)
         {
-            existing = new Translation { Id = Guid.NewGuid(), SourceDraftId = source.Id, UserId = user, Locale = request.Locale, Body = translated, CreatedAt = clock.UtcNow };
+            existing = new Translation { Id = Guid.NewGuid(), SourceDraftId = source.Id, UserId = user, Locale = request.Locale, Body = assist.Body!, ProviderName = assist.ProviderName, ModelName = assist.ModelName, SchemaVersion = assist.SchemaVersion, CreatedAt = clock.UtcNow };
             db.Translations.Add(existing);
         }
         else
         {
-            existing.Body = translated; existing.Status = TranslationStatus.Outdated; existing.UpdatedAt = clock.UtcNow;
+            existing.Body = assist.Body!; existing.Status = TranslationStatus.Outdated; existing.UpdatedAt = clock.UtcNow;
+            existing.ProviderName = assist.ProviderName; existing.ModelName = assist.ModelName; existing.SchemaVersion = assist.SchemaVersion;
         }
         await db.SaveChangesAsync();
         await quotas.FinalizeAsync(reservation.ReservationId!.Value);
@@ -169,22 +178,7 @@ public static class AssistedImportEndpoints
         return Results.Ok(quotas.Select(q => new QuotaUsageResponse(q.Metric, q.Used, q.Limit, q.PeriodStart, q.PeriodEnd)).ToList());
     }
 
-    private static async Task<bool> TryConsumeQuotaAsync(AppDbContext db, Guid userId, string metric, int limit, IClock clock)
-    {
-        var now = clock.UtcNow;
-        var periodStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var periodEnd = periodStart.AddMonths(1);
-        var quota = await db.AiQuotaUsages.SingleOrDefaultAsync(x => x.UserId == userId && x.Metric == metric && x.PeriodStart == periodStart);
-        if (quota is null)
-        {
-            quota = new AiQuotaUsage { Id = Guid.NewGuid(), UserId = userId, Metric = metric, Used = 0, Limit = limit, PeriodStart = periodStart, PeriodEnd = periodEnd };
-            db.AiQuotaUsages.Add(quota);
-        }
-        if (quota.Used >= quota.Limit) return false;
-        quota.Used += 1;
-        await db.SaveChangesAsync();
-        return true;
-    }
+    private static string SafeSource(string input) => SafeInputScrubber.Scrub(input);
 
     private static async Task ProcessInternalAsync(AppDbContext db, IAiAssistant ai, IClock clock, ImportJob job)
     {
@@ -193,60 +187,75 @@ public static class AssistedImportEndpoints
             job.Status = ImportStatus.Processing;
             await db.SaveChangesAsync();
             var source = !string.IsNullOrWhiteSpace(job.SourceText) ? job.SourceText : $"object://{job.ObjectKey}";
-            var suggestion = await ai.AssistAsync(source, default);
-            var nodes = suggestion.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToList();
-            var draft = new ImportDraft
+            var operationId = $"import:{job.Id:N}";
+            var assistRequest = new AiAssistRequest(AiAssistKind.Draft, source, null, null, operationId, 20000, 8000);
+            var result = await ai.AssistAsync(assistRequest, default);
+            job.ProviderName = result.ProviderName;
+            job.ModelName = result.ModelName;
+            job.SchemaVersion = result.SchemaVersion;
+            job.AttemptCount = result.AttemptCount;
+            if (result.Status == AiAssistStatus.Completed && result.Nodes is { Count: > 0 })
             {
-                Id = Guid.NewGuid(),
-                ImportJobId = job.Id,
-                UserId = job.UserId,
-                SuggestedTitle = $"Imported — {nodes.FirstOrDefault() ?? source[..Math.Min(40, source.Length)]}",
-                SuggestedNodesJson = JsonSerializer.Serialize(nodes),
-                ProvenanceJson = JsonSerializer.Serialize(new { job = job.Id, kind = job.Kind.ToString(), generatedAt = clock.UtcNow }),
-                CreatedAt = clock.UtcNow,
-            };
-            db.ImportDrafts.Add(draft);
-            job.Status = ImportStatus.Completed;
-            job.CompletedAt = clock.UtcNow;
+                var title = !string.IsNullOrWhiteSpace(result.Title) ? result.Title! : (result.Nodes[0].Length > 200 ? result.Nodes[0][..200] : result.Nodes[0]);
+                var draft = new ImportDraft
+                {
+                    Id = Guid.NewGuid(),
+                    ImportJobId = job.Id,
+                    UserId = job.UserId,
+                    SuggestedTitle = title,
+                    SuggestedNodesJson = JsonSerializer.Serialize(result.Nodes),
+                    ProvenanceJson = JsonSerializer.Serialize(new { job = job.Id, kind = job.Kind.ToString(), generatedAt = clock.UtcNow, provider = result.ProviderName, model = result.ModelName, schemaVersion = result.SchemaVersion, attempts = result.AttemptCount }),
+                    ProviderName = result.ProviderName,
+                    ModelName = result.ModelName,
+                    SchemaVersion = result.SchemaVersion,
+                    OutputSchemaVersion = result.SchemaVersion,
+                    CreatedAt = clock.UtcNow,
+                };
+                db.ImportDrafts.Add(draft);
+                job.Status = ImportStatus.Completed;
+                job.CompletedAt = clock.UtcNow;
+            }
+            else
+            {
+                job.Status = ImportStatus.Failed;
+                job.FailureCode = result.FailureCode;
+                job.FailureReason = DescribeStatus(result.Status);
+                job.CompletedAt = clock.UtcNow;
+            }
             await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             job.Status = ImportStatus.Failed;
+            job.FailureCode = "unexpected-exception";
             job.FailureReason = ex.Message;
             job.CompletedAt = clock.UtcNow;
             await db.SaveChangesAsync();
         }
     }
 
-    private static async Task<bool> EnsureQuotaAsync(AppDbContext db, Guid userId, string metric, int limit, IClock clock)
+    private static string DescribeStatus(AiAssistStatus status) => status switch
     {
-        var now = clock.UtcNow;
-        var periodStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var periodEnd = periodStart.AddMonths(1);
-        var quota = await db.AiQuotaUsages.SingleOrDefaultAsync(x => x.UserId == userId && x.Metric == metric && x.PeriodStart == periodStart);
-        if (quota is null)
-        {
-            quota = new AiQuotaUsage { Id = Guid.NewGuid(), UserId = userId, Metric = metric, Used = 0, Limit = limit, PeriodStart = periodStart, PeriodEnd = periodEnd };
-            db.AiQuotaUsages.Add(quota);
-            await db.SaveChangesAsync();
-        }
-        return quota.Used < quota.Limit;
-    }
+        AiAssistStatus.Disabled => "AI provider is disabled by configuration; no draft was created.",
+        AiAssistStatus.ProviderUnavailable => "AI provider is unavailable. Please retry.",
+        AiAssistStatus.InvalidOutput => "AI provider returned output that failed validation.",
+        AiAssistStatus.Timeout => "AI provider timed out before producing a result.",
+        _ => "AI processing failed.",
+    };
 
-    private static ImportJobResponse JobResponse(ImportJob j) => new(j.Id, j.UserId, j.Kind.ToString(), j.Status.ToString(), j.SubmittedAt, j.CompletedAt, j.FailureReason);
-    private static ImportDraftResponse DraftResponse(ImportDraft d) => new(d.Id, d.ImportJobId, d.SuggestedTitle, d.ProvenanceJson, d.Status.ToString(), d.CreatedAt, d.SuggestedNodesJson);
-    private static TranslationResponse TranslationResponse(Translation t) => new(t.Id, t.SourceDraftId, t.Locale, t.Body, t.Status.ToString(), t.CreatedAt, t.UpdatedAt);
+    private static ImportJobResponse JobResponse(ImportJob j) => new(j.Id, j.UserId, j.Kind.ToString(), j.Status.ToString(), j.SubmittedAt, j.CompletedAt, j.FailureReason, j.ProviderName, j.ModelName, j.SchemaVersion, j.FailureCode);
+    private static ImportDraftResponse DraftResponse(ImportDraft d) => new(d.Id, d.ImportJobId, d.SuggestedTitle, d.ProvenanceJson, d.Status.ToString(), d.CreatedAt, d.SuggestedNodesJson, d.ProviderName, d.ModelName, d.SchemaVersion);
+    private static TranslationResponse TranslationResponse(Translation t) => new(t.Id, t.SourceDraftId, t.Locale, t.Body, t.Status.ToString(), t.CreatedAt, t.UpdatedAt, t.ProviderName, t.ModelName, t.SchemaVersion);
 }
 
 public sealed record SubmitTextImportRequest(string SourceText);
 public sealed record SubmitObjectImportRequest(string ObjectKey, string Kind);
 public sealed record ApproveDraftRequest(string? GuideId);
 public sealed record CreateTranslationRequest(Guid SourceDraftId, string Locale, string Body);
-public sealed record ImportJobResponse(Guid Id, Guid UserId, string Kind, string Status, DateTimeOffset SubmittedAt, DateTimeOffset? CompletedAt, string FailureReason);
+public sealed record ImportJobResponse(Guid Id, Guid UserId, string Kind, string Status, DateTimeOffset SubmittedAt, DateTimeOffset? CompletedAt, string FailureReason, string ProviderName, string ModelName, string SchemaVersion, string FailureCode);
 public sealed record ImportJobListResponse(int Total, IReadOnlyList<ImportJobResponse> Items);
-public sealed record ImportDraftResponse(Guid Id, Guid ImportJobId, string SuggestedTitle, string ProvenanceJson, string Status, DateTimeOffset CreatedAt, string SuggestedNodesJson);
+public sealed record ImportDraftResponse(Guid Id, Guid ImportJobId, string SuggestedTitle, string ProvenanceJson, string Status, DateTimeOffset CreatedAt, string SuggestedNodesJson, string ProviderName, string ModelName, string SchemaVersion);
 public sealed record ImportJobDetailResponse(ImportJobResponse Job, ImportDraftResponse? Draft);
-public sealed record TranslationResponse(Guid Id, Guid SourceDraftId, string Locale, string Body, string Status, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt);
+public sealed record TranslationResponse(Guid Id, Guid SourceDraftId, string Locale, string Body, string Status, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt, string ProviderName, string ModelName, string SchemaVersion);
 public sealed record TranslationListResponse(int Total, IReadOnlyList<TranslationResponse> Items);
 public sealed record QuotaUsageResponse(string Metric, int Used, int Limit, DateTimeOffset PeriodStart, DateTimeOffset PeriodEnd);

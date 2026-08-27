@@ -40,10 +40,15 @@ public static class CommerceEndpoints
             appliedCode = discount.Code;
         }
         var payable = guide.PriceMinorUnits.Value - discountAmount;
-        string reference;
-        try { reference = await gateway.CreateCheckoutAsync(payable, guide.CurrencyCode!, default); }
-        catch (Exception error) when (error is NotSupportedException or IOException or InvalidOperationException) { return Results.Problem("Payments are unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         var now = clock.UtcNow;
+        var idempotencyKey = $"guide:{guide.Id}:buyer:{buyer}:{now.Ticks}";
+        string reference;
+        try
+        {
+            var session = await gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(payable, guide.CurrencyCode!, guide.Id, buyer, appliedCode, "/api/v1/commerce/return/success", "/api/v1/commerce/return/cancel", idempotencyKey), default);
+            reference = session.Reference;
+        }
+        catch (Exception error) when (error is NotSupportedException or IOException or InvalidOperationException) { return Results.Problem("Payments are unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         var order = new GuideOrder { Id = Guid.NewGuid(), GuideId = guide.Id, BuyerUserId = buyer, AmountMinorUnits = payable, CurrencyCode = guide.CurrencyCode!, DiscountCode = appliedCode, DiscountAmountMinorUnits = discountAmount, CheckoutReference = reference, CreatedAt = now };
         db.GuideOrders.Add(order); await db.SaveChangesAsync();
         CommerceCommands.Add(1, new KeyValuePair<string, object?>("operation", "checkout"));

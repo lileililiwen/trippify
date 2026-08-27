@@ -1009,8 +1009,13 @@ class ImportJob {
     this.submittedAt,
     this.completedAt,
     this.failureReason,
+    this.providerName,
+    this.modelName,
+    this.schemaVersion,
+    this.failureCode,
   );
   final String id, userId, kind, status, failureReason;
+  final String providerName, modelName, schemaVersion, failureCode;
   final DateTime submittedAt;
   final DateTime? completedAt;
 }
@@ -1024,9 +1029,14 @@ class ImportDraft {
     this.status,
     this.createdAt,
     this.suggestedNodesJson,
+    this.providerName,
+    this.modelName,
+    this.schemaVersion,
   );
   final String id, importJobId, suggestedTitle, provenanceJson, status, suggestedNodesJson;
+  final String providerName, modelName, schemaVersion;
   final DateTime createdAt;
+  bool get isAiLabeled => providerName.isNotEmpty && providerName != 'local';
 }
 
 class ImportJobDetail {
@@ -1044,8 +1054,12 @@ class Translation {
     this.status,
     this.createdAt,
     this.updatedAt,
+    this.providerName,
+    this.modelName,
+    this.schemaVersion,
   );
   final String id, sourceDraftId, locale, body, status;
+  final String providerName, modelName, schemaVersion;
   final DateTime createdAt;
   final DateTime? updatedAt;
 }
@@ -2467,6 +2481,10 @@ class ApiClient implements AppApi {
         DateTime.parse(v['submittedAt'] as String),
         _parseNullableDate(v['completedAt']),
         v['failureReason'] as String? ?? '',
+        (v['providerName'] as String?) ?? '',
+        (v['modelName'] as String?) ?? '',
+        (v['schemaVersion'] as String?) ?? '',
+        (v['failureCode'] as String?) ?? '',
       );
 
   static ImportDraft _toImportDraft(Map<String, dynamic> v) => ImportDraft(
@@ -2477,6 +2495,9 @@ class ApiClient implements AppApi {
         v['status'] as String,
         DateTime.parse(v['createdAt'] as String),
         v['suggestedNodesJson'] as String,
+        (v['providerName'] as String?) ?? '',
+        (v['modelName'] as String?) ?? '',
+        (v['schemaVersion'] as String?) ?? '',
       );
 
   static Translation _toTranslation(Map<String, dynamic> v) => Translation(
@@ -2487,6 +2508,9 @@ class ApiClient implements AppApi {
         v['status'] as String,
         DateTime.parse(v['createdAt'] as String),
         _parseNullableDate(v['updatedAt']),
+        (v['providerName'] as String?) ?? '',
+        (v['modelName'] as String?) ?? '',
+        (v['schemaVersion'] as String?) ?? '',
       );
 
   @override

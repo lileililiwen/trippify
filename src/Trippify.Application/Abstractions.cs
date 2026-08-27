@@ -34,8 +34,53 @@ public interface IMapProvider
     Task<GeocodeResult> GeocodeAsync(string address, CancellationToken cancellationToken);
 }
 
-public interface IPaymentGateway { Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellation); }
-public interface IAiAssistant { Task<string> AssistAsync(string input, CancellationToken cancellation); }
+public sealed record CheckoutSession(string Url, string Reference, long AmountMinorUnits, string CurrencyCode);
+
+public interface IPaymentGateway
+{
+    string ProviderName { get; }
+    Task<CheckoutSession> CreateCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellation);
+}
+
+public sealed record PaymentCheckoutRequest(long AmountMinorUnits, string CurrencyCode, Guid GuideId, Guid BuyerUserId, string? DiscountCode, string SuccessUrl, string CancelUrl, string IdempotencyKey);
+
+public interface IPaymentWebhookVerifier
+{
+    string ProviderName { get; }
+    bool VerifySignature(ReadOnlySpan<byte> rawBody, IDictionary<string, string> headers, string expectedSecret);
+}
+
+public enum AiAssistKind { Draft, Translate }
+public enum AiAssistStatus { Completed, InvalidOutput, ProviderUnavailable, Timeout, Disabled }
+
+public sealed record AiAssistRequest(
+    AiAssistKind Kind,
+    string SourceText,
+    string? SourceLocale,
+    string? TargetLocale,
+    string OperationId,
+    int MaxInputChars,
+    int MaxOutputChars);
+
+public sealed record AiAssistResult(
+    AiAssistStatus Status,
+    string? Title,
+    IReadOnlyList<string>? Nodes,
+    string? Body,
+    string ProviderName,
+    string ModelName,
+    string SchemaVersion,
+    int AttemptCount,
+    bool Retryable,
+    string FailureCode);
+
+public interface IAiAssistant
+{
+    string ProviderName { get; }
+    AiAssistResult Disabled();
+    Task<AiAssistResult> AssistAsync(AiAssistRequest request, CancellationToken cancellation);
+}
+
 public interface IBackgroundJobQueue
 {
     ValueTask EnqueueAsync(string jobName, string payload, CancellationToken cancellation, string? idempotencyKey = null, DateTimeOffset? availableAt = null);

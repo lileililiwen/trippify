@@ -1589,9 +1589,7 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       final detail = await widget.api.submitTextImport(source.text.trim());
       setState(() {
         draft = detail.draft;
-        status = detail.job.status == 'Completed'
-            ? 'Import ready for review.'
-            : 'Import ${detail.job.status}.';
+        status = _describeJob(detail.job.status, detail.job.failureCode);
       });
       _loadQuotas();
     } catch (error) {
@@ -1604,13 +1602,26 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       final detail = await widget.api.submitObjectImport(objectKey.text.trim(), 'Photo');
       setState(() {
         draft = detail.draft;
-        status = detail.job.status == 'Completed'
-            ? 'Object import ready for review.'
-            : 'Object import ${detail.job.status}.';
+        status = _describeJob(detail.job.status, detail.job.failureCode);
       });
       _loadQuotas();
     } catch (error) {
       setState(() => status = _quotaAwareMessage(error, 'Cannot submit object import.'));
+    }
+  }
+
+  String _describeJob(String status, String failureCode) {
+    switch (status) {
+      case 'Completed':
+        return 'Import ready for review.';
+      case 'Failed':
+        if (failureCode == 'provider-disabled') return 'AI assistance is currently disabled.';
+        if (failureCode == 'provider-unavailable') return 'AI provider is unavailable. Please retry shortly.';
+        if (failureCode == 'schema-mismatch') return 'AI provider returned invalid output; the draft was not created.';
+        if (failureCode == 'timeout') return 'AI provider timed out; the draft was not created.';
+        return 'Import failed (${failureCode.isEmpty ? 'unknown' : failureCode}).';
+      default:
+        return 'Import $status.';
     }
   }
 
@@ -1687,6 +1698,14 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
               label: 'Draft title',
               child: Text(draft!.suggestedTitle),
             ),
+            if (draft!.isAiLabeled)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Text(
+                  'AI-assisted · ${draft!.providerName} · ${draft!.modelName} · schema ${draft!.schemaVersion}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
             Text(draft!.status),
             Wrap(
               spacing: 8,

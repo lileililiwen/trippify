@@ -9,12 +9,15 @@ public sealed class NullEmailSender : IEmailSender
 
 public sealed class LocalPaymentGateway : IPaymentGateway
 {
-    public Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellation)
+    public string ProviderName => "local";
+    public Task<CheckoutSession> CreateCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellation)
         => throw new NotSupportedException("Payments are disabled in local mode.");
 }
 
 public sealed class LocalAiAssistant : IAiAssistant
 {
-    public Task<string> AssistAsync(string input, CancellationToken cancellation) => Task.FromResult(input);
+    public string ProviderName => "local";
+    public AiAssistResult Disabled() => new(AiAssistStatus.Disabled, null, null, null, "local", "local", "v1", 0, false, "provider-disabled");
+    public Task<AiAssistResult> AssistAsync(AiAssistRequest request, CancellationToken cancellation)
+        => Task.FromResult(Disabled());
 }
-

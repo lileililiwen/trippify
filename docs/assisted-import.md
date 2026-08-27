@@ -1,26 +1,35 @@
 # Assisted import and translation
 
-Authors need help translating and reformatting source material without giving the AI the keys to the kingdom. This slice adds queued text/photo/video imports, generated drafts with provenance, owner-driven review, linked translations, and per-user quotas.
+Authors need help translating and reformatting source material without giving the AI the keys to the kingdom. This slice adds queued text/photo/video imports, validated, attributed private drafts, provider-backed translation, owner-driven review, and per-user quotas.
 
 ## Imports
 
-- `POST /api/v1/me/imports/text { sourceText }` queues a text import (30–20 000 characters). `IAiAssistant.AssistAsync` drafts an `ImportDraft` immediately; the job leaves `Queued → Processing → Completed` synchronously so reviewers can act without waiting for a background scheduler.
+- `POST /api/v1/me/imports/text { sourceText }` queues a text import (30–20 000 characters). The job leaves `Queued → Processing → Completed` synchronously so reviewers can act without waiting for a background scheduler.
 - `POST /api/v1/me/imports/object { objectKey, kind }` queues an object-backed import; `kind` is parsed to `Photo`/`Video` (defaults to `Photo`).
 - `GET /api/v1/me/imports?limit=N` lists the caller's jobs newest-first (`limit` clamped to `1`-`100`).
 - `GET /api/v1/me/imports/{jobId}` returns the job and, when completed, the associated draft.
 - `POST /api/v1/me/imports/{jobId}/process` is a no-op for completed jobs and re-runs processing for queued ones (idempotent on completed).
 
+## AI adapter contract
+
+- `IAiAssistant` accepts a typed `AiAssistRequest` (kind, source text, locales, schema version, output limits) and returns an `AiAssistResult` with status, title, nodes or body, provider/model/schema version, attempt count, and a structured failure code.
+- `AiAssistStatus` values: `Completed`, `InvalidOutput`, `ProviderUnavailable`, `Timeout`, `Disabled`. Drafts and translations are only persisted on `Completed`; every other state surfaces a retryable or terminal failure to the caller.
+- The production adapter (`HttpAiAssistant`) issues an HTTP `POST /v1/ai/assist` against a configured server-side endpoint, validates the response against the `v1` schema (`title`, `nodes[]` for drafts; `body` for translations), and retries transient transport failures with exponential backoff inside the configured timeout.
+- Local deployments bind the `Ai:Provider` setting to `local` (default) or set `Ai:Enabled=false`. In both cases the adapter returns a `Disabled` result without echoing the source text.
+- Server-side credentials live under `Ai:ApiKey`. Client-held keys are out of scope.
+
 ## Draft review
 
 - `POST /api/v1/me/drafts/{draftId}/approve { guideId? }` flips the draft to `Approved`. **No automatic publish** — the draft stays private until a future slice wires the guide editor.
 - `POST /api/v1/me/drafts/{draftId}/reject` flips the draft to `Rejected`.
-- Drafts store provenance via `provenanceJson` (`{ job, kind, generatedAt }`) so reviewers can trace every node back to the import.
+- Drafts store provenance via `provenanceJson` plus first-class columns (`ProviderName`, `ModelName`, `SchemaVersion`, `OutputSchemaVersion`) so reviewers can trace every node back to the import and refuse to approve drafts lacking provenance.
 
 ## Translations
 
-- `POST /api/v1/me/translations { sourceDraftId, locale, body }` stores a translation linked to the source draft. Re-submitting the same `(sourceDraftId, locale)` updates the body and marks the translation `Outdated`. The unique index `(SourceDraftId, Locale)` enforces the link in the database even under concurrent requests.
+- `POST /api/v1/me/translations { sourceDraftId, locale, body }` runs the body through `IAiAssistant`, validates the response, and stores a translation linked to the source draft. Provider/model/schema provenance is captured alongside the body.
+- Re-submitting the same `(sourceDraftId, locale)` updates the body and marks the translation `Outdated`. The unique index `(SourceDraftId, Locale)` enforces the link in the database even under concurrent requests.
 - `GET /api/v1/me/translations` returns the caller's translations newest-first.
-- Translation bodies are run through `IAiAssistant.AssistAsync` so this slice demonstrates re-planning via the same adapter used by imports.
+- Provider outages during translation return `503 AI translation failed.` and the quota reservation is released without persisting a body.
 
 ## Quotas
 
@@ -34,5 +43,6 @@ The `Trippify.AssistedImport` meter emits `trippify.assistedimport.commands` wit
 ## Privacy guarantees
 
 - Imports and drafts are scoped to the submitting user; `GET /api/v1/me/imports/{jobId}` and the draft endpoints return `404` for any owner mismatch.
-- AI assistance runs through `IAiAssistant` so secrets never leave the API process; the LocalProviders stub keeps the contract intact without invoking an external model.
-- Quotas prevent bulk uploads from monopolising shared infrastructure, and rejected `503`-style failures are encoded as `403` to keep the privacy posture consistent with the rest of the API.
+- AI assistance runs through `IAiAssistant` so secrets never leave the API process; the local adapter keeps the contract intact without invoking an external model and is clearly labelled `Disabled` rather than fabricating a successful draft.
+- Source text is scrubbed for email addresses and phone numbers before it is forwarded to a configured provider so unrelated personal data does not leave the server.
+- Quotas prevent bulk uploads from monopolising shared infrastructure, and rejected `503`-style failures are encoded as `503` (translation) or as a `Failed` job (imports) so reviewers can act without losing the original source.

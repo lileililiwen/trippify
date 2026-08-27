@@ -428,25 +428,25 @@ class FakeApi implements AppApi {
       const ExportPayload('u1', 'Display', 'en', []);
   @override
   Future<ImportJobDetail> submitTextImport(String sourceText) async => ImportJobDetail(
-        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, ''),
+        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, '', '', '', '', ''),
         null);
   @override
   Future<ImportJobDetail> submitObjectImport(String objectKey, String kind) async => ImportJobDetail(
-        ImportJob('j1', 'u1', 'Photo', 'Completed', DateTime(2026, 1, 1), null, ''),
+        ImportJob('j1', 'u1', 'Photo', 'Completed', DateTime(2026, 1, 1), null, '', '', '', '', ''),
         null);
   @override
   Future<ImportJobDetail> processImportJob(String jobId) async => ImportJobDetail(
-        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, ''),
+        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, '', '', '', '', ''),
         null);
   @override
   Future<ImportDraft> approveImportDraft(String draftId, String? guideId) async =>
-      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Approved', DateTime(2026, 1, 1), '[]');
+      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Approved', DateTime(2026, 1, 1), '[]', '', '', '');
   @override
   Future<ImportDraft> rejectImportDraft(String draftId) async =>
-      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Rejected', DateTime(2026, 1, 1), '[]');
+      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Rejected', DateTime(2026, 1, 1), '[]', '', '', '');
   @override
   Future<Translation> createTranslation(String sourceDraftId, String locale, String body) async =>
-      Translation('t1', sourceDraftId, locale, body, 'Linked', DateTime(2026, 1, 1), null);
+      Translation('t1', sourceDraftId, locale, body, 'Linked', DateTime(2026, 1, 1), null, '', '', '');
   @override
   Future<List<QuotaRow>> listMyAiQuotas() async => const [];
   @override
@@ -1640,5 +1640,10 @@ testWidgets('license panel screen renders empty state and create default action'
       find.widgetWithText(FilledButton, 'Load attachments'),
       findsOneWidget,
     );
+  });
+  test('ImportDraft isAiLabeled requires non-empty, non-local provider', () {
+    expect(ImportDraft('a', 'b', 't', '{}', 'PendingReview', DateTime(2026), '[]', '', '', '').isAiLabeled, isFalse);
+    expect(ImportDraft('a', 'b', 't', '{}', 'PendingReview', DateTime(2026), '[]', 'local', '', '').isAiLabeled, isFalse);
+    expect(ImportDraft('a', 'b', 't', '{}', 'PendingReview', DateTime(2026), '[]', 'openai', 'gpt-4o', 'v1').isAiLabeled, isTrue);
   });
 }

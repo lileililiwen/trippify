@@ -34,7 +34,9 @@ public sealed class CommerceFactory : WebApplicationFactory<Program>
 
 public sealed class FakeGateway : IPaymentGateway
 {
-    public Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellationToken) => Task.FromResult("cs_test_" + Guid.NewGuid().ToString("N"));
+    public string ProviderName => "fake";
+    public Task<CheckoutSession> CreateCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellationToken)
+        => Task.FromResult(new CheckoutSession($"https://example.test/checkout/{Guid.NewGuid():N}", "cs_test_" + Guid.NewGuid().ToString("N"), request.AmountMinorUnits, request.CurrencyCode));
 }
 
 public sealed class CommerceApiTests(CommerceFactory factory) : IClassFixture<CommerceFactory>

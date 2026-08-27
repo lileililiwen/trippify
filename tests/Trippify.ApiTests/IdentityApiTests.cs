@@ -17,7 +17,7 @@ using Xunit;
 
 namespace Trippify.ApiTests;
 
-public sealed class TrippifyFactory : WebApplicationFactory<Program>
+public class TrippifyFactory : WebApplicationFactory<Program>
 {
     public static readonly string ObjectStorageRoot = Path.Combine(Path.GetTempPath(), "trippify-tests-" + Guid.NewGuid().ToString("N"));
     public static readonly string SignedUrlSecret = "test-secret-do-not-use-in-production-" + Guid.NewGuid().ToString("N");
