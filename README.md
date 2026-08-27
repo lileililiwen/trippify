@@ -73,6 +73,25 @@ cd apps/trippify_flutter
 flutter test
 ```
 
+## Optional development demo data
+
+An empty Development database can be populated with fictional traveler, creator, administrator, guide, commerce, review, notification, plugin, tenant, and assisted-import data:
+
+```sh
+DemoSeed__Enabled=true dotnet run --project src/Trippify.Api
+```
+
+The seeder is disabled by default, is never registered outside the `Development` environment, and skips all writes when any user already exists. To reseed, recreate the local development database and start the API again with `DemoSeed__Enabled=true`.
+
+The fictional accounts use the local-only password `Seed!Pass123`:
+
+- `demo@example.com` — traveler with a paid entitlement, favorite, trip, review, and notifications
+- `creator@example.com` — active creator with three published guides
+- `admin@example.com` — administrator
+- `traveler2@example.com` through `traveler5@example.com` — additional travelers used for reviews and privacy-safe aggregate metrics
+
+Never enable or reuse these credentials in a deployed environment.
+
 ## Deployment notes
 
 Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, and any other provider secrets through your secret store. Never commit secrets.

@@ -29,6 +29,7 @@ builder.Services.AddSingleton(new ActivitySource("Trippify.Api")); builder.Servi
 builder.Services.AddSingleton<LocalProviders>(sp => new LocalProviders(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<IObjectStorage>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<Trippify.Application.IEmailSender>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IMapProvider>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IPaymentGateway>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IAiAssistant>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IBackgroundJobQueue>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddTransient<Microsoft.AspNetCore.Identity.IEmailSender<AppUser>, IdentityEmailSender>();
+if (builder.Environment.IsDevelopment() && builder.Configuration.GetValue("DemoSeed:Enabled", false)) builder.Services.AddScoped<IDemoDataSeeder, DemoDataSeeder>();
 var app = builder.Build(); app.UseExceptionHandler(); app.Use(async (context, next) => { context.Response.Headers.Append("X-Correlation-Id", Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier); await next(); }); app.UseCors(); app.UseRateLimiter(); app.UseAuthentication(); app.UseMiddleware<ActiveSessionMiddleware>(); app.UseAuthorization(); app.UseSwagger(); app.UseSwaggerUI();
 app.MapGet("/api/v1/system", () => Results.Ok(new { name = "Trippify", apiVersion = "v1" })).RequireRateLimiting("api");
 app.MapGet("/api/v1/system/protected", () => Results.NoContent()).RequireAuthorization();
@@ -50,6 +51,12 @@ app.MapCommercialRemixes();
 app.MapSelfHosted();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue("DemoSeed:Enabled", false))
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<IDemoDataSeeder>();
+    await seeder.SeedAsync();
+}
 app.Run();
 public partial class Program;
 public sealed class PostgresHealthCheck(AppDbContext db) : IHealthCheck
