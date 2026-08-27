@@ -12,7 +12,7 @@
 - [x] Ensure registration still succeeds even if email fails to send
 
 ## Testing
-- [ ] Verify registration works with matching passwords
-- [ ] Verify registration shows error for mismatched passwords
-- [ ] Verify registration still creates account even if email fails
-- [ ] Verify confirmation email link works when email service is configured
+- [x] Verify registration works with matching passwords
+- [x] Verify registration shows error for mismatched passwords
+- [x] Verify registration still creates account even if email fails
+- [x] Verify confirmation email link works when email service is configured

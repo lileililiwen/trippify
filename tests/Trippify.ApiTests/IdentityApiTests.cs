@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.WebUtilities;
 using Trippify.Infrastructure;
+using Trippify.Application;
 using Xunit;
 
 namespace Trippify.ApiTests;
@@ -155,6 +156,112 @@ public sealed class IdentityApiTests(TrippifyFactory factory) : IClassFixture<Tr
         {
             var roles = adminDoc.RootElement.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).ToArray();
             Assert.Contains("Administrator", roles);
+        }
+    }
+
+    [Fact]
+    public async Task Registration_with_strong_password_creates_user_and_attempts_confirmation_email()
+    {
+        using var client = factory.CreateClient();
+        var emailAddress = "matching@example.com";
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new { email = emailAddress, password = "Strong!Pass123" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        AppUser? created = null;
+        await WithServices(async services =>
+        {
+            var users = services.GetRequiredService<UserManager<AppUser>>();
+            created = await users.FindByEmailAsync(emailAddress);
+        });
+        Assert.NotNull(created);
+        Assert.False(created!.EmailConfirmed);
+    }
+
+    [Fact]
+    public async Task Registration_succeeds_even_when_email_sender_throws()
+    {
+        var throwingFactory = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<Trippify.Application.IEmailSender>();
+            services.AddSingleton<Trippify.Application.IEmailSender, ThrowingEmailSender>();
+        }));
+        using var client = throwingFactory.CreateClient();
+        var emailAddress = "email-fails@example.com";
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new { email = emailAddress, password = "Strong!Pass123" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        AppUser? created = null;
+        await using (var scope = throwingFactory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            created = await users.FindByEmailAsync(emailAddress);
+        }
+        Assert.NotNull(created);
+    }
+
+    [Fact]
+    public async Task Registration_with_weak_password_is_rejected_with_validation_error()
+    {
+        using var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new { email = "weak@example.com", password = "short" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        AppUser? created = null;
+        await WithServices(async services =>
+        {
+            var users = services.GetRequiredService<UserManager<AppUser>>();
+            created = await users.FindByEmailAsync("weak@example.com");
+        });
+        Assert.Null(created);
+    }
+
+    [Fact]
+    public async Task Confirmation_link_sent_during_registration_actually_confirms_the_account()
+    {
+        var capturingFactory = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<Trippify.Application.IEmailSender>();
+            services.AddSingleton<Trippify.Application.IEmailSender, CapturingEmailSender>();
+        }));
+        using var client = capturingFactory.CreateClient();
+        var emailAddress = "confirm-link@example.com";
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new { email = emailAddress, password = "Strong!Pass123" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        AppUser? user = null;
+        await using (var scope = capturingFactory.Services.CreateAsyncScope())
+        {
+            user = await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByEmailAsync(emailAddress);
+        }
+        Assert.NotNull(user);
+        var link = CapturingEmailSender.LastConfirmationLink;
+        Assert.NotNull(link);
+        Assert.False(user!.EmailConfirmed);
+
+        var confirmResponse = await client.GetAsync(link!);
+        Assert.Equal(HttpStatusCode.NoContent, confirmResponse.StatusCode);
+
+        AppUser? refreshed = null;
+        await using (var scope = capturingFactory.Services.CreateAsyncScope())
+        {
+            refreshed = await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByEmailAsync(emailAddress);
+        }
+        Assert.True(refreshed!.EmailConfirmed);
+    }
+
+    private sealed class ThrowingEmailSender : Trippify.Application.IEmailSender
+    {
+        public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Simulated SMTP outage.");
+    }
+
+    private sealed class CapturingEmailSender : Trippify.Application.IEmailSender
+    {
+        public static string? LastConfirmationLink { get; private set; }
+        public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
+        {
+            if (subject.Contains("Confirm", StringComparison.OrdinalIgnoreCase)) LastConfirmationLink = body;
+            return Task.CompletedTask;
         }
     }
 
