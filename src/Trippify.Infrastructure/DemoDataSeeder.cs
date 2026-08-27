@@ -9,9 +9,9 @@ namespace Trippify.Infrastructure;
 
 /// <summary>
 /// Populates the database with a small but realistic set of demo data the
-/// first time the API boots in the Development environment. Idempotent: if
-/// any user already exists, the seeder returns immediately so developer
-/// data is never overwritten.
+/// first time the API boots in the Development environment. The seeder
+/// preserves unrelated users and uses its documented identity set as the
+/// idempotency boundary.
 /// </summary>
 public interface IDemoDataSeeder
 {
@@ -25,15 +25,37 @@ public sealed class DemoDataSeeder(
     IClock clock,
     ILogger<DemoDataSeeder> logger) : IDemoDataSeeder
 {
+    private static readonly string[] NormalizedDemoEmails =
+    [
+        "DEMO@EXAMPLE.COM",
+        "CREATOR@EXAMPLE.COM",
+        "TRAVELER2@EXAMPLE.COM",
+        "TRAVELER3@EXAMPLE.COM",
+        "TRAVELER4@EXAMPLE.COM",
+        "TRAVELER5@EXAMPLE.COM",
+        "ADMIN@EXAMPLE.COM",
+    ];
+
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        if (await db.Users.AnyAsync(cancellationToken))
+        var existingDemoEmails = await db.Users
+            .Where(user => user.NormalizedEmail != null && NormalizedDemoEmails.Contains(user.NormalizedEmail))
+            .Select(user => user.NormalizedEmail!)
+            .ToListAsync(cancellationToken);
+
+        if (existingDemoEmails.Count == NormalizedDemoEmails.Length)
         {
-            logger.LogInformation("Demo seeder skipped: users already exist.");
+            logger.LogInformation("Demo seeder skipped: the complete demo identity set already exists.");
             return;
         }
 
-        logger.LogInformation("Demo seeder populating an empty database.");
+        if (existingDemoEmails.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Demo seeding found a partial demo identity set. Recreate the local Development database or remove every documented demo account before trying again.");
+        }
+
+        logger.LogInformation("Demo seeder populating demo fixtures while preserving unrelated users.");
 
         var demo = await CreateUserAsync("demo@example.com", "Demo Traveler", isAdmin: false, cancellationToken);
         var creator = await CreateUserAsync("creator@example.com", "Demo Creator", isAdmin: false, cancellationToken);

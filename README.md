@@ -81,7 +81,7 @@ An empty Development database can be populated with fictional traveler, creator,
 DemoSeed__Enabled=true dotnet run --project src/Trippify.Api
 ```
 
-The seeder is disabled by default, is never registered outside the `Development` environment, and skips all writes when any user already exists. To reseed, recreate the local development database and start the API again with `DemoSeed__Enabled=true`.
+The seeder is disabled by default and is never registered outside the `Development` environment. It preserves unrelated existing users, adds demo fixtures when no documented demo identity exists, and skips repeat runs when the complete demo identity set already exists. If startup reports a partial demo identity set, recreate the local development database or remove all documented demo accounts before trying again.
 
 The fictional accounts use the local-only password `Seed!Pass123`:
 

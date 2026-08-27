@@ -105,7 +105,7 @@ public sealed class DemoDataSeederTests(SeederEnabledFactory factory) : IClassFi
     }
 
     [Fact]
-    public async Task SeedAsync_when_database_contains_a_user_preserves_existing_data()
+    public async Task SeedAsync_when_database_contains_an_unrelated_user_preserves_it_and_adds_demo_data()
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var seeder = scope.ServiceProvider.GetRequiredService<IDemoDataSeeder>();
@@ -124,6 +124,32 @@ public sealed class DemoDataSeederTests(SeederEnabledFactory factory) : IClassFi
 
         await seeder.SeedAsync();
 
+        Assert.Equal(8, await db.Users.CountAsync());
+        Assert.Equal(3, await db.TravelGuides.CountAsync());
+        Assert.Equal(1, await db.Users.CountAsync(user => user.Email == "existing@example.com"));
+    }
+
+    [Fact]
+    public async Task SeedAsync_when_partial_demo_identity_set_exists_fails_without_claiming_success()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<IDemoDataSeeder>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureDeletedAsync();
+
+        db.Users.Add(new AppUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = "demo@example.com",
+            NormalizedUserName = "DEMO@EXAMPLE.COM",
+            Email = "demo@example.com",
+            NormalizedEmail = "DEMO@EXAMPLE.COM",
+        });
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => seeder.SeedAsync());
+
+        Assert.Contains("partial demo identity set", error.Message);
         Assert.Equal(1, await db.Users.CountAsync());
         Assert.Equal(0, await db.TravelGuides.CountAsync());
     }
