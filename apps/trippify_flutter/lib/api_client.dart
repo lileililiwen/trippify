@@ -295,10 +295,14 @@ class RouteMarker {
     this.name,
     this.latitude,
     this.longitude,
+    this.geocodeStatus,
+    this.geocodeAttribution,
   );
   final String nodeId, name;
   final int position;
   final double? latitude, longitude;
+  final String geocodeStatus;
+  final String? geocodeAttribution;
 }
 
 class RouteSegment {
@@ -317,8 +321,9 @@ class RouteSegment {
 }
 
 class DayRoute {
-  const DayRoute(this.concurrencyToken, this.markers, this.segments);
+  const DayRoute(this.concurrencyToken, this.markers, this.segments, this.geocodeAttribution);
   final String concurrencyToken;
+  final String? geocodeAttribution;
   final List<RouteMarker> markers;
   final List<RouteSegment> segments;
 }
@@ -1327,6 +1332,7 @@ class ApiClient implements AppApi {
   @override
   Future<DayRoute> getDayRoute(String guideId, int dayPosition) async {
     final v = await _json('GET', '/api/v1/guides/$guideId/days/$dayPosition/route', null);
+    final attribution = _firstMarkerAttribution(v['markers']);
     return DayRoute(
       v['concurrencyToken'] as String,
       (v['markers'] as List).map((item) {
@@ -1337,6 +1343,8 @@ class ApiClient implements AppApi {
           m['name'] as String,
           (m['latitude'] as num?)?.toDouble(),
           (m['longitude'] as num?)?.toDouble(),
+          (m['geocodeStatus'] as String?) ?? 'Manual',
+          m['geocodeAttribution'] as String?,
         );
       }).toList(),
       (v['segments'] as List).map((item) {
@@ -1352,7 +1360,19 @@ class ApiClient implements AppApi {
           s['currencyCode'] as String,
         );
       }).toList(),
+      attribution,
     );
+  }
+
+  String? _firstMarkerAttribution(dynamic markers) {
+    if (markers is! List) return null;
+    for (final raw in markers) {
+      if (raw is Map<String, dynamic>) {
+        final attribution = raw['geocodeAttribution'];
+        if (attribution is String && attribution.isNotEmpty) return attribution;
+      }
+    }
+    return null;
   }
 
   @override
@@ -1397,6 +1417,7 @@ class ApiClient implements AppApi {
           s['currencyCode'] as String,
         );
       }).toList(),
+      route.geocodeAttribution,
     );
   }
 

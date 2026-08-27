@@ -19,6 +19,9 @@ namespace Trippify.ApiTests;
 
 public sealed class TrippifyFactory : WebApplicationFactory<Program>
 {
+    public static readonly string ObjectStorageRoot = Path.Combine(Path.GetTempPath(), "trippify-tests-" + Guid.NewGuid().ToString("N"));
+    public static readonly string SignedUrlSecret = "test-secret-do-not-use-in-production-" + Guid.NewGuid().ToString("N");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -26,6 +29,11 @@ public sealed class TrippifyFactory : WebApplicationFactory<Program>
         {
             ["DemoSeed:Enabled"] = "false",
             ["BackgroundJobs:WorkersEnabled"] = "false",
+            ["ObjectStorage:Provider"] = "local",
+            ["ObjectStorage:LocalRoot"] = ObjectStorageRoot,
+            ["ObjectStorage:PublicBaseUrl"] = "local://trippify-tests/",
+            ["ObjectStorage:SignedUrlSecret"] = SignedUrlSecret,
+            ["Map:Provider"] = "local",
         }));
         builder.ConfigureServices(services =>
         {

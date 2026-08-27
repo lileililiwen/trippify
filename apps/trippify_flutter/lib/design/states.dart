@@ -86,3 +86,210 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Provider taxonomy surfaced by the map and media surfaces. Each value
+/// maps to a deliberate UI treatment; the renderer never fabricates data
+/// when a provider is unavailable.
+enum ProviderStatus { loading, success, unavailable, denied, offline }
+
+class ProviderStateView extends StatelessWidget {
+  const ProviderStateView({
+    super.key,
+    required this.status,
+    required this.successMessage,
+    this.onRetry,
+    this.success,
+    this.unavailableMessage = 'Provider is not configured for this environment.',
+    this.deniedMessage = 'You do not have access to this provider.',
+    this.offlineMessage = 'Provider is unreachable. Check your connection and retry.',
+    this.icon,
+  });
+
+  final ProviderStatus status;
+  final String successMessage;
+  final Widget? success;
+  final VoidCallback? onRetry;
+  final String unavailableMessage;
+  final String deniedMessage;
+  final String offlineMessage;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case ProviderStatus.loading:
+        return const LoadingState();
+      case ProviderStatus.success:
+        return success ?? EmptyState(message: successMessage, icon: Icons.check_circle_outline);
+      case ProviderStatus.unavailable:
+        return EmptyState(
+          message: unavailableMessage,
+          icon: Icons.cloud_off_outlined,
+          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: const Text('Retry')),
+        );
+      case ProviderStatus.denied:
+        return EmptyState(message: deniedMessage, icon: Icons.lock_outline);
+      case ProviderStatus.offline:
+        return EmptyState(
+          message: offlineMessage,
+          icon: Icons.wifi_off_outlined,
+          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: const Text('Retry')),
+        );
+    }
+  }
+}
+
+/// Compact inline status badge used to label attribution, retries, and
+/// resolution state next to map markers and media thumbnails.
+class ProviderStatusBadge extends StatelessWidget {
+  const ProviderStatusBadge({super.key, required this.label, this.tooltip});
+
+  final String label;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final chip = Chip(
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      avatar: const Icon(Icons.map_outlined, size: 16),
+      label: Text(label, style: theme.textTheme.labelSmall),
+    );
+    return tooltip == null ? chip : Tooltip(message: tooltip!, child: chip);
+  }
+}
+
+/// Visual placeholder for a map surface. Replaces the static "Map preview"
+/// tile with loading, success with markers, unresolved geocode, denied
+/// permission, or offline retries.
+class MapSurfaceView extends StatelessWidget {
+  const MapSurfaceView({
+    super.key,
+    required this.status,
+    required this.markers,
+    this.attribution,
+    this.unresolvedCount = 0,
+    this.onRetry,
+  });
+
+  final ProviderStatus status;
+  final List<MapMarkerState> markers;
+  final String? attribution;
+  final int unresolvedCount;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final surface = theme.colorScheme.surfaceContainerHigh;
+    final onSurface = theme.colorScheme.onSurfaceVariant;
+
+    Widget body;
+    switch (status) {
+      case ProviderStatus.loading:
+        body = const Center(child: CircularProgressIndicator());
+        break;
+      case ProviderStatus.success:
+        if (markers.isEmpty) {
+          body = Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.map_outlined, size: 48, color: onSurface),
+                const SizedBox(height: 8),
+                Text(
+                  'No coordinates yet. Add places with an address.',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: onSurface),
+                  textAlign: TextAlign.center,
+                ),
+                if (attribution != null) ...[
+                  const SizedBox(height: 8),
+                  ProviderStatusBadge(label: attribution!),
+                ],
+              ],
+            ),
+          );
+        } else {
+          body = Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final marker in markers)
+                      ProviderStatusBadge(
+                        label: marker.label,
+                        tooltip: marker.subtitle,
+                      ),
+                  ],
+                ),
+              ),
+              if (attribution != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: ProviderStatusBadge(label: attribution!),
+                ),
+              if (unresolvedCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+                  child: Text(
+                    '$unresolvedCount location${unresolvedCount == 1 ? '' : 's'} could not be resolved.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          );
+        }
+        break;
+      case ProviderStatus.unavailable:
+        body = ProviderStateView(
+          status: status,
+          successMessage: '',
+          onRetry: onRetry,
+        );
+        break;
+      case ProviderStatus.denied:
+        body = const ProviderStateView(
+          status: ProviderStatus.denied,
+          successMessage: '',
+          unavailableMessage: 'Map access denied for this guide.',
+          deniedMessage: 'You do not have permission to view this map.',
+        );
+        break;
+      case ProviderStatus.offline:
+        body = ProviderStateView(
+          status: ProviderStatus.offline,
+          successMessage: '',
+          offlineMessage: 'Map provider is unreachable. Check your connection and retry.',
+          onRetry: onRetry,
+        );
+        break;
+    }
+
+    return Container(
+      height: 200,
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: body,
+    );
+  }
+}
+
+/// Single marker rendered on the [MapSurfaceView] surface.
+class MapMarkerState {
+  const MapMarkerState({required this.label, this.subtitle});
+  final String label;
+  final String? subtitle;
+}
+

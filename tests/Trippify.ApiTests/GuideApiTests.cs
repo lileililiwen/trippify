@@ -73,7 +73,7 @@ public sealed class GuideApiTests(TrippifyFactory factory) : IClassFixture<Tripp
         var creator = await CreateCreator(unavailable.Services, "media-author@example.com");
         using var client = unavailable.CreateClient(); client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(client, creator.Email!));
         var created = await client.PostAsJsonAsync("/api/v1/guides", Metadata("Media guide")); created.EnsureSuccessStatusCode(); var json = await Json(created); var id = json.GetProperty("id").GetGuid(); var token = json.GetProperty("concurrencyToken").GetGuid();
-        var response = await client.PostAsJsonAsync($"/api/v1/guides/{id}/media", new { concurrencyToken = token, storageKey = "guides/photo.jpg", contentBase64 = "AQ==", caption = "Photo" });
+        var response = await client.PostAsJsonAsync($"/api/v1/guides/{id}/media", new { concurrencyToken = token, storageKey = "guides/photo.jpg", contentBase64 = "/9j/4AAQ", contentType = "image/jpeg", caption = "Photo" });
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         await using var scope = unavailable.Services.CreateAsyncScope(); Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().GuideMedia.AnyAsync());
     }
@@ -88,7 +88,8 @@ public sealed class GuideApiTests(TrippifyFactory factory) : IClassFixture<Tripp
     private sealed class ThrowingStorage : IObjectStorage
     {
         public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => throw new IOException("offline");
-        public Task DeleteAsync(string key, CancellationToken cancellationToken) => throw new IOException("offline");
+        public Task DeleteAsync(string key, CancellationToken cancellation) => throw new IOException("offline");
         public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken) => throw new IOException("offline");
+        public Task<bool> ExistsAsync(string key, CancellationToken cancellation) => throw new IOException("offline");
     }
 }

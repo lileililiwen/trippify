@@ -100,12 +100,13 @@ class FakeApi implements AppApi {
     return DayRoute(
       'token',
       const [
-        RouteMarker('n1', 0, 'Osaka Castle', 34.687, 135.526),
-        RouteMarker('n2', 1, 'Nishiki Market', 35.005, 135.765),
+        RouteMarker('n1', 0, 'Osaka Castle', 34.687, 135.526, 'Manual', null),
+        RouteMarker('n2', 1, 'Nishiki Market', 35.005, 135.765, 'Resolved', 'Local geocoder'),
       ],
       const [
         RouteSegment(0, 'Train', 'JR line', 'Osaka Castle', 'Nishiki Market', 55, 820, 'JPY'),
       ],
+      'Local geocoder',
     );
   }
 

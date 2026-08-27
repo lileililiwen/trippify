@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Trippify.Application;
 
 namespace Trippify.Infrastructure;
@@ -64,6 +63,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<RevenueShare> RevenueShares => Set<RevenueShare>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<BackupSnapshot> BackupSnapshots => Set<BackupSnapshot>();
+    public DbSet<GeocodeCache> GeocodeCache => Set<GeocodeCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -94,30 +94,3 @@ public sealed class CreatorProfile { public Guid UserId { get; init; } public re
 public sealed class RevokedAccessToken { public required string TokenHash { get; init; } public DateTimeOffset ExpiresAt { get; init; } }
 public sealed class IdentityAuditEntry { public Guid Id { get; init; } public Guid ActorUserId { get; init; } public Guid TargetUserId { get; init; } public required string Action { get; init; } public required string Reason { get; init; } public DateTimeOffset OccurredAt { get; init; } }
 public sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }
-public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider, IPaymentGateway, IAiAssistant
-{
-    private readonly IEmailSender? _resend;
-
-    public LocalProviders(IConfiguration configuration) : this(configuration, new HttpClient()) { }
-
-    public LocalProviders(IConfiguration configuration, HttpClient resendHttpClient)
-    {
-        var resendKey = configuration["RESEND_API_KEY"];
-        if (!string.IsNullOrEmpty(resendKey))
-        {
-            resendHttpClient.BaseAddress ??= new Uri("https://api.resend.com");
-            _resend = new ResendEmailSender(resendKey, resendHttpClient);
-        }
-    }
-
-    public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => Task.FromResult(new Uri("file:///tmp/trippify/" + Uri.EscapeDataString(key)));
-    public Task DeleteAsync(string key, CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken) => Task.FromResult(new Uri($"file:///tmp/trippify/{Uri.EscapeDataString(key)}?expires={DateTimeOffset.UtcNow.Add(lifetime):o}"));
-    public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
-    {
-        return _resend?.SendAsync(recipient, subject, body, cancellationToken) ?? Task.CompletedTask;
-    }
-    public Task<string?> GeocodeAsync(string address, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellationToken) => throw new NotSupportedException("Payments are disabled in local mode.");
-    public Task<string> AssistAsync(string input, CancellationToken cancellationToken) => Task.FromResult(input);
-}

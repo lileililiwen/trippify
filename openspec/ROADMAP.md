@@ -31,6 +31,18 @@ Implement and archive one change at a time. A later change may be refined before
 16. `offer-managed-saas-hosting`
 17. `introduce-integration-plugin-system`
 
+## Production completeness
+
+18. `add-development-demo-data`
+19. `integrate-production-payment-gateway`
+20. `implement-restorable-self-hosted-backups`
+21. `execute-durable-background-jobs`
+22. `enforce-managed-saas-quotas`
+23. `integrate-production-ai-assistance`
+24. `integrate-map-and-object-storage-providers`
+25. `upload-verified-trip-evidence-attachments`
+26. `fix-flutter-session-controls`
+
 ## Cross-change gates
 
 - ASP.NET Core API authorization tests cover anonymous, wrong-user, creator, and administrator paths.

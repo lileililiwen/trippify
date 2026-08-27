@@ -54,15 +54,14 @@ public sealed class ResendEmailSenderTests
     }
 
     [Fact]
-    public async Task LocalProviders_with_no_api_key_completes_send_without_calling_resend()
+    public async Task LocalEmail_without_api_key_completes_send_without_calling_resend()
     {
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
-        var providers = new LocalProviders(config);
-        await providers.SendAsync("user@example.com", "x", "y", CancellationToken.None);
+        var sender = new NullEmailSender();
+        await sender.SendAsync("user@example.com", "x", "y", CancellationToken.None);
     }
 
     [Fact]
-    public async Task LocalProviders_with_api_key_delegates_to_resend()
+    public async Task LocalEmail_with_api_key_delegates_to_resend()
     {
         HttpRequestMessage? captured = null;
         var handler = new CapturingHandler((request, _) =>
@@ -70,13 +69,10 @@ public sealed class ResendEmailSenderTests
             captured = request;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         });
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["RESEND_API_KEY"] = "live-key"
-        }).Build();
-        var providers = new LocalProviders(config, new HttpClient(handler) { BaseAddress = new Uri("https://api.resend.com") });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.resend.com") };
+        var sender = new ResendEmailSender("live-key", http);
 
-        await providers.SendAsync("user@example.com", "x", "y", CancellationToken.None);
+        await sender.SendAsync("user@example.com", "x", "y", CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal("Bearer", captured!.Headers.Authorization!.Scheme);

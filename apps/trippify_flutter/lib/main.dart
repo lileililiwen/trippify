@@ -622,7 +622,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
   );
 }
 
-class _DayRouteSection extends StatelessWidget {
+class _DayRouteSection extends StatefulWidget {
   const _DayRouteSection({
     required this.api,
     required this.guideId,
@@ -631,73 +631,117 @@ class _DayRouteSection extends StatelessWidget {
   final AppApi api;
   final String guideId;
   final int dayPosition;
+
   @override
-  Widget build(BuildContext context) => FutureBuilder<DayRoute>(
-    future: api.getDayRoute(guideId, dayPosition),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(child: CircularProgressIndicator()),
+  State<_DayRouteSection> createState() => _DayRouteSectionState();
+}
+
+class _DayRouteSectionState extends State<_DayRouteSection> {
+  late Future<DayRoute> _route = widget.api.getDayRoute(widget.guideId, widget.dayPosition);
+
+  void _retry() => setState(() {
+        _route = widget.api.getDayRoute(widget.guideId, widget.dayPosition);
+      });
+
+  @override
+  void didUpdateWidget(covariant _DayRouteSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.guideId != widget.guideId || oldWidget.dayPosition != widget.dayPosition) {
+      _retry();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DayRoute>(
+      future: _route,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return MapSurfaceView(
+            status: ProviderStatus.loading,
+            markers: const [],
+            onRetry: _retry,
+          );
+        }
+        if (snapshot.hasError) {
+          final error = snapshot.error;
+          final status = error is ApiException
+              ? (error.statusCode == 401
+                  ? ProviderStatus.denied
+                  : (error.statusCode == 503
+                      ? ProviderStatus.offline
+                      : ProviderStatus.unavailable))
+              : ProviderStatus.unavailable;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MapSurfaceView(
+                status: status,
+                markers: const [],
+                onRetry: _retry,
+              ),
+            ],
+          );
+        }
+        final route = snapshot.data!;
+        final markers = route.markers
+            .map((m) => MapMarkerState(
+                  label: m.name,
+                  subtitle: m.latitude == null || m.longitude == null
+                      ? 'Unresolved location'
+                      : '${m.latitude!.toStringAsFixed(4)}, ${m.longitude!.toStringAsFixed(4)}',
+                ))
+            .toList();
+        final unresolved = route.markers.where((m) => m.latitude == null || m.longitude == null).length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MapSurfaceView(
+              status: ProviderStatus.success,
+              markers: markers,
+              attribution: route.geocodeAttribution,
+              unresolvedCount: unresolved,
+              onRetry: _retry,
+            ),
+            if (route.markers.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No markers yet. Add places to this day.'),
+              ),
+            for (final marker in route.markers)
+              ListTile(
+                leading: const Icon(Icons.place_outlined),
+                title: Text(marker.name),
+                subtitle: Text(
+                  marker.latitude == null || marker.longitude == null
+                      ? marker.geocodeStatus == 'Unresolved'
+                          ? 'Provider could not resolve this location.'
+                          : 'No coordinates'
+                      : '${marker.latitude!.toStringAsFixed(4)}, ${marker.longitude!.toStringAsFixed(4)}',
+                ),
+                trailing: marker.geocodeAttribution == null
+                    ? null
+                    : ProviderStatusBadge(
+                        label: marker.geocodeAttribution!,
+                        tooltip: 'Geocode attribution',
+                      ),
+              ),
+            for (final segment in route.segments)
+              ListTile(
+                leading: const Icon(Icons.route_outlined),
+                title: Text('${segment.originName} → ${segment.destinationName}'),
+                subtitle: Text(
+                  '${segment.mode} · ${segment.durationMinutes} min',
+                ),
+                trailing: Text(
+                  '${segment.costPerPersonMinorUnits} ${segment.currencyCode}',
+                ),
+              ),
+          ],
         );
-      }
-      if (snapshot.hasError) {
-        return const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Planning access denied or unavailable.'),
-        );
-      }
-      final route = snapshot.data!;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 200,
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                'Map preview',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ),
-          ),
-          if (route.markers.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No markers yet. Add places to this day.'),
-            ),
-          for (final marker in route.markers)
-            ListTile(
-              leading: const Icon(Icons.place_outlined),
-              title: Text(marker.name),
-              subtitle: Text(
-                marker.latitude == null || marker.longitude == null
-                    ? 'No coordinates'
-                    : '${marker.latitude!.toStringAsFixed(4)}, ${marker.longitude!.toStringAsFixed(4)}',
-              ),
-            ),
-          for (final segment in route.segments)
-            ListTile(
-              leading: const Icon(Icons.route_outlined),
-              title: Text('${segment.originName} → ${segment.destinationName}'),
-              subtitle: Text(
-                '${segment.mode} · ${segment.durationMinutes} min',
-              ),
-              trailing: Text(
-                '${segment.costPerPersonMinorUnits} ${segment.currencyCode}',
-              ),
-            ),
-        ],
-      );
-    },
-  );
+      },
+    );
+  }
 }
 
 class _BudgetSection extends StatelessWidget {

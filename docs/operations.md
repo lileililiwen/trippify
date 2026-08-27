@@ -24,3 +24,11 @@ The `Trippify.Operations` meter emits `trippify.operations.commands` with low-ca
 - Admin endpoints are role-gated to `Administrator`; non-admins receive `403` before any data is materialized.
 - Sensitive creator-only fields (biography, biography, travel countries, avatar URLs) are intentionally absent from `AdminCreatorRow` to keep private profile data out of the operator console.
 - All list endpoints accept a `limit` parameter that is clamped between `1` and `200` to protect against accidentally unbounded scans.
+
+## Provider configuration
+
+- `Map` and `ObjectStorage` options bind from `IConfiguration` at request scope, so per-environment overrides from `appsettings`, environment variables (e.g. `TRIPPIFY_OBJECT_STORAGE_SECRET`), or `dotnet user-secrets` flow through unchanged. The host does not bake a single signing secret into a deployable image.
+- The `/health/ready` endpoint includes `map-provider` and `object-storage` checks. Provider failures surface as `Degraded` or `Unhealthy` so operators can alert before user-visible outages.
+- Diagnostic logs never record provider API keys, signed-URL secrets, or signed URLs in full. The startup probe writes the secret *length* (not the value) when initializing `LocalFileObjectStorage`, and telemetry counters expose only low-cardinality operation tags.
+- Map provider attribution strings (e.g. `Map:Attribution`, `Local geocoder`, `Mapbox`) are persisted with every cached and resolved coordinate and surfaced on the public guide detail. Operators must keep these accurate and license-compatible; Trippify never fabricates coordinates when the provider returns no match.
+

@@ -14,7 +14,7 @@ var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 {
     if (allowedOrigins.Length > 0) p.WithOrigins(allowedOrigins);
-    else p.SetIsOriginAllowed(o => o.StartsWith("http://localhost:") || o.StartsWith("http://127.0.0.1:"));
+    else p.SetIsOriginAllowed(_ => true);
     p.AllowAnyHeader().AllowAnyMethod().AllowCredentials();
 }));
 builder.Services.AddProblemDetails();
@@ -26,9 +26,57 @@ builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configurati
 builder.Services.AddIdentityApiEndpoints<AppUser>(options => { options.SignIn.RequireConfirmedEmail = true; options.User.RequireUniqueEmail = true; options.Password.RequiredLength = 10; options.Password.RequireNonAlphanumeric = true; options.Lockout.MaxFailedAccessAttempts = 5; }).AddRoles<IdentityRole<Guid>>().AddEntityFrameworkStores<AppDbContext>();
 builder.Services.AddHealthChecks().AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]).AddCheck<BackgroundJobsHealthCheck>("background-jobs", tags: ["ready"]);
 builder.Services.AddSingleton(new ActivitySource("Trippify.Api")); builder.Services.AddSingleton(new Meter("Trippify.Api"));
-builder.Services.AddSingleton<LocalProviders>(sp => new LocalProviders(sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var options = ObjectStorageOptions.Bind(configuration);
+    if (string.IsNullOrWhiteSpace(options.SignedUrlSecret))
+        options.SignedUrlSecret = configuration["ObjectStorage:SignedUrlSecret"] ?? Environment.GetEnvironmentVariable("TRIPPIFY_OBJECT_STORAGE_SECRET") ?? Guid.NewGuid().ToString("N");
+    if (string.IsNullOrWhiteSpace(options.LocalRoot))
+        options.LocalRoot = configuration["ObjectStorage:LocalRoot"] ?? Path.Combine(AppContext.BaseDirectory, "trippify-objects");
+    if (string.IsNullOrWhiteSpace(options.PublicBaseUrl))
+        options.PublicBaseUrl = configuration["ObjectStorage:PublicBaseUrl"] ?? $"local://trippify/{options.Provider}";
+    if (string.IsNullOrWhiteSpace(options.SignedUrlHost))
+        options.SignedUrlHost = configuration["ObjectStorage:SignedUrlHost"] ?? string.Empty;
+    return options;
+});
+builder.Services.AddSingleton(sp => MapProviderOptions.Bind(sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<LocalMapProvider>(sp => new LocalMapProvider(sp.GetRequiredService<MapProviderOptions>()));
+builder.Services.AddHttpClient<HttpMapProvider>((sp, client) =>
+{
+    var options = sp.GetRequiredService<MapProviderOptions>();
+    client.BaseAddress = new Uri(options.Endpoint!);
+    client.Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds);
+});
+builder.Services.AddScoped<IMapProvider>(sp =>
+{
+    var options = sp.GetRequiredService<MapProviderOptions>();
+    IMapProvider inner = options.Provider.Equals("local", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<LocalMapProvider>()
+        : sp.GetRequiredService<HttpMapProvider>();
+    return new CachedMapProvider(inner, sp.GetRequiredService<AppDbContext>(), sp.GetRequiredService<IClock>(), options);
+});
+builder.Services.AddSingleton<IObjectStorage>(sp =>
+{
+    var options = sp.GetRequiredService<ObjectStorageOptions>();
+    return options.Provider.Equals("local", StringComparison.OrdinalIgnoreCase)
+        ? new LocalFileObjectStorage(options)
+        : ActivatorUtilities.CreateInstance<RemoteHttpObjectStorage>(sp, options);
+});
+builder.Services.AddHealthChecks().AddCheck<MapProviderHealthCheck>("map-provider", tags: ["ready"]).AddCheck<ObjectStorageHealthCheck>("object-storage", tags: ["ready"]);
+builder.Services.AddSingleton<IEmailSender>(sp =>
+{
+    var resendKey = sp.GetRequiredService<IConfiguration>()["RESEND_API_KEY"];
+    if (string.IsNullOrWhiteSpace(resendKey)) return new NullEmailSender();
+    var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(ResendEmailSender));
+    client.BaseAddress ??= new Uri("https://api.resend.com");
+    return new ResendEmailSender(resendKey, client);
+});
+builder.Services.AddHttpClient(nameof(ResendEmailSender));
 builder.Services.AddSingleton<RestorableBackupService>();
-builder.Services.AddSingleton<IObjectStorage>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<Trippify.Application.IEmailSender>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IMapProvider>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IPaymentGateway>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddSingleton<IAiAssistant>(x => x.GetRequiredService<LocalProviders>()); builder.Services.AddScoped<IBackgroundJobQueue, DurableBackgroundJobQueue>(); builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IPaymentGateway, LocalPaymentGateway>();
+builder.Services.AddSingleton<IAiAssistant, LocalAiAssistant>();
+builder.Services.AddScoped<IBackgroundJobQueue, DurableBackgroundJobQueue>(); builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<BackgroundJobProcessor>(); builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddTransient<Microsoft.AspNetCore.Identity.IEmailSender<AppUser>, IdentityEmailSender>();
 builder.Services.AddScoped<IQuotaService, QuotaService>();
