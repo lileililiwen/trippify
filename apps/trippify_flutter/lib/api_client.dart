@@ -18,6 +18,56 @@ class ApiException implements Exception {
   String toString() => message.isEmpty ? 'Request failed ($statusCode)' : message;
 }
 
+/// Typed error taxonomy. Use [toAppError] to map any thrown error to one
+/// of these so screens can render the right copy for 404, 500, offline,
+/// and declined payments instead of a single generic message.
+enum AppError { notFound, unauthorized, paymentDeclined, network, server, unknown }
+
+AppError toAppError(Object e) {
+  if (e is ApiException) {
+    switch (e.statusCode) {
+      case 401:
+      case 403:
+        return AppError.unauthorized;
+      case 402:
+        return AppError.paymentDeclined;
+      case 404:
+        return AppError.notFound;
+    }
+    if (e.statusCode >= 500) return AppError.server;
+    return AppError.unknown;
+  }
+  // http's ClientException, SocketException, TimeoutException, etc.
+  final s = e.toString();
+  if (s.contains('SocketException') ||
+      s.contains('ClientException') ||
+      s.contains('TimeoutException') ||
+      s.contains('Connection refused') ||
+      s.contains('Failed host lookup')) {
+    return AppError.network;
+  }
+  return AppError.unknown;
+}
+
+/// Human-readable copy for an [AppError]. Use this in [ErrorState] so
+/// every screen surfaces the right message.
+String appErrorMessage(AppError err) {
+  switch (err) {
+    case AppError.notFound:
+      return 'This resource is no longer available.';
+    case AppError.unauthorized:
+      return 'You need to sign in to do that.';
+    case AppError.paymentDeclined:
+      return 'Your payment was declined. Try a different method.';
+    case AppError.network:
+      return 'Unable to reach the service. Check your connection.';
+    case AppError.server:
+      return 'The service is having trouble. Try again shortly.';
+    case AppError.unknown:
+      return 'Something went wrong. Please try again.';
+  }
+}
+
 class MySummary {
   const MySummary(
     this.email,

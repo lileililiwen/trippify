@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api_client.dart';
 import 'design/states.dart';
 import 'design/theme.dart';
+import 'onboarding/registration_confirmation_screen.dart';
 import 'shell/signed_in_shell.dart';
 
 /// A section title that announces itself as a header to assistive tech.
@@ -14,6 +15,11 @@ Widget sectionTitle(BuildContext context, String text, {TextStyle? style}) {
     child: Text(text, style: style ?? Theme.of(context).textTheme.titleMedium),
   );
 }
+
+/// Bridge for the email captured by the registration screen. The
+/// `/register/done` route builder only has a [BuildContext], so we
+/// stash the value here and the confirmation screen reads it.
+String? _lastRegisteredEmail;
 
 void main() => runApp(
   TrippifyApp(
@@ -43,6 +49,10 @@ class TrippifyApp extends StatelessWidget {
       '/': (_) => SystemScreen(api: api),
       '/sign-in': (_) => SignInScreen(api: api),
       '/register': (_) => RegistrationScreen(api: api),
+      '/register/done': (_) => RegistrationConfirmationScreen(
+        api: api,
+        email: _lastRegisteredEmail,
+      ),
       '/profile': (_) => _ShellRoute(
         api: api,
         destination: SignedInDestination.home,
@@ -240,6 +250,12 @@ class _SystemScreenState extends State<SystemScreen> {
           FilledButton(
             onPressed: () => Navigator.pushNamed(context, '/register'),
             child: const Text('Create account'),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/discover'),
+            icon: const Icon(Icons.explore),
+            label: const Text('Browse the catalog'),
           ),
         ],
       ),
@@ -820,9 +836,22 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             }
             final data = snapshot.data!;
             if (data.items.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No published guides match your search yet.'),
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No published guides match your search yet.'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          Navigator.pushReplacementNamed(context, '/discover'),
+                      icon: const Icon(Icons.explore),
+                      label: const Text('Browse the catalog'),
+                    ),
+                  ],
+                ),
               );
             }
             return Column(
@@ -998,7 +1027,9 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
               ),
               FilledButton(
                 onPressed: () => buy(data),
-                child: const Text('Buy and unlock'),
+                child: Text(
+                  'Buy and unlock · ${data.priceMinorUnits} ${data.currencyCode}',
+                ),
               ),
             ] else if (data.pricing == 'paid')
               Semantics(
@@ -2740,7 +2771,21 @@ class _EntitlementList extends StatelessWidget {
       }
       final items = snapshot.data!;
       if (items.isEmpty) {
-        return const Text('No purchased guides yet.');
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('No purchased guides yet.'),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: () => Navigator.pushNamed(context, '/discover'),
+                icon: const Icon(Icons.explore),
+                label: const Text('Browse the catalog'),
+              ),
+            ],
+          ),
+        );
       }
       return Column(
         children: [
@@ -2927,8 +2972,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             }
             final items = snapshot.data!.items;
             if (items.isEmpty) {
-              return const Center(
-                child: Text('No notifications yet.'),
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('No notifications yet.'),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/notification-preferences',
+                      ),
+                      child: const Text('Adjust notification preferences'),
+                    ),
+                  ],
+                ),
               );
             }
             return ListView(
@@ -3082,9 +3140,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     try {
       await widget.api.register(email.text.trim(), password.text);
-      setState(() => status = 'Check your email to confirm your account.');
-    } catch (_) {
-      setState(() => status = 'Unable to create account.');
+      if (!mounted) return;
+      _lastRegisteredEmail = email.text.trim();
+      Navigator.pushReplacementNamed(context, '/register/done');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        status = 'Unable to create account. ${appErrorMessage(toAppError(e))}';
+      });
     }
   }
 
@@ -3164,9 +3227,16 @@ class _SignInScreenState extends State<SignInScreen> {
     });
     try {
       await widget.api.login(email.text.trim(), password.text);
-      if (mounted) Navigator.pushReplacementNamed(context, '/profile');
-    } catch (_) {
-      if (mounted) setState(() => error = 'Sign in failed.');
+      if (!mounted) return;
+      // Return to wherever the user came from (or the home) so a
+      // sign-in launched from /discover does not lose their place.
+      if (Navigator.canPop(context)) {
+        Navigator.popUntil(context, (r) => r.isFirst);
+      }
+      Navigator.pushReplacementNamed(context, '/');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => error = 'Sign in failed. ${appErrorMessage(toAppError(e))}');
     } finally {
       if (mounted) setState(() => busy = false);
     }
