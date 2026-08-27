@@ -49,6 +49,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<QuotaUsage> QuotaUsages => Set<QuotaUsage>();
     public DbSet<TenantAuditEntry> TenantAuditEntries => Set<TenantAuditEntry>();
+    public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
+    public DbSet<ImportDraft> ImportDrafts => Set<ImportDraft>();
+    public DbSet<Translation> Translations => Set<Translation>();
+    public DbSet<AiQuotaUsage> AiQuotaUsages => Set<AiQuotaUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

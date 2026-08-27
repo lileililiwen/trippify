@@ -25,3 +25,4 @@ Creator follows and preference-aware notifications are documented in [`docs/noti
 Immutable releases, changelogs, buyer update notifications, and freshness indicators are documented in [`docs/versioning.md`](docs/versioning.md).
 Integration plugin system (manifests, signatures, scope, lifecycle, audit) is documented in [`docs/plugins.md`](docs/plugins.md).
 Managed SaaS hosting (tenants, subscriptions, quotas, export/deletion) is documented in [`docs/managed-saas.md`](docs/managed-saas.md).
+Assisted imports, draft review, and linked translations are documented in [`docs/assisted-import.md`](docs/assisted-import.md).

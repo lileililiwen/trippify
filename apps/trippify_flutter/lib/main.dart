@@ -41,6 +41,7 @@ class TrippifyApp extends StatelessWidget {
       '/notification-preferences': (_) => NotificationPreferencesScreen(api: api),
       '/plugins': (_) => PluginCatalogScreen(api: api),
       '/tenant': (_) => TenantDashboardScreen(api: api),
+      '/assisted-import': (_) => AssistedImportScreen(api: api),
     },
   );
 }
@@ -182,6 +183,15 @@ TextButton(
               ),
             ),
             child: const Text('My tenant'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => AssistedImportScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Assisted import'),
           ),
               ],
             );
@@ -1036,11 +1046,155 @@ class _TenantDashboardScreenState extends State<TenantDashboardScreen> {
             onPressed: _export,
             child: const Text('Generate export'),
           ),
-          if (export != null)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text('Export ${export!.purchases.length} record(s) for ${export!.displayName}.'),
+        ],
+      ),
+    );
+  }
+}
+
+class AssistedImportScreen extends StatefulWidget {
+  const AssistedImportScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<AssistedImportScreen> createState() => _AssistedImportScreenState();
+}
+
+class _AssistedImportScreenState extends State<AssistedImportScreen> {
+  final source = TextEditingController();
+  final objectKey = TextEditingController();
+  String? status;
+  ImportDraft? draft;
+  List<QuotaRow> quotas = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQuotas();
+  }
+
+  Future<void> _loadQuotas() async {
+    try {
+      final value = await widget.api.listMyAiQuotas();
+      if (mounted) setState(() => quotas = value);
+    } catch (_) {}
+  }
+
+  Future<void> _submitText() async {
+    try {
+      final detail = await widget.api.submitTextImport(source.text.trim());
+      setState(() {
+        draft = detail.draft;
+        status = detail.job.status == 'Completed'
+            ? 'Import ready for review.'
+            : 'Import ${detail.job.status}.';
+      });
+      _loadQuotas();
+    } catch (_) {
+      setState(() => status = 'Cannot submit text import.');
+    }
+  }
+
+  Future<void> _submitObject() async {
+    try {
+      final detail = await widget.api.submitObjectImport(objectKey.text.trim(), 'Photo');
+      setState(() {
+        draft = detail.draft;
+        status = detail.job.status == 'Completed'
+            ? 'Object import ready for review.'
+            : 'Object import ${detail.job.status}.';
+      });
+      _loadQuotas();
+    } catch (_) {
+      setState(() => status = 'Cannot submit object import.');
+    }
+  }
+
+  Future<void> _approve() async {
+    if (draft == null) return;
+    try {
+      final updated = await widget.api.approveImportDraft(draft!.id, null);
+      setState(() {
+        draft = updated;
+        status = 'Draft approved. Translate or share when ready.';
+      });
+    } catch (_) {
+      setState(() => status = 'Cannot approve draft.');
+    }
+  }
+
+  Future<void> _reject() async {
+    if (draft == null) return;
+    try {
+      final updated = await widget.api.rejectImportDraft(draft!.id);
+      setState(() {
+        draft = updated;
+        status = 'Draft rejected.';
+      });
+    } catch (_) {
+      setState(() => status = 'Cannot reject draft.');
+    }
+  }
+
+  Future<void> _translate(String locale) async {
+    if (draft == null) return;
+    try {
+      final translation = await widget.api.createTranslation(draft!.id, locale, 'Translated version');
+      setState(() => status = 'Translation saved (${translation.locale}).');
+      _loadQuotas();
+    } catch (_) {
+      setState(() => status = 'Cannot save translation.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Assisted import')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('Paste text', style: Theme.of(context).textTheme.titleMedium),
+          TextField(
+            controller: source,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(labelText: 'Source text (30+ chars)'),
+          ),
+          FilledButton(onPressed: _submitText, child: const Text('Submit text import')),
+          const SizedBox(height: 16),
+          Text('Object-backed', style: Theme.of(context).textTheme.titleMedium),
+          TextField(
+            controller: objectKey,
+            decoration: const InputDecoration(labelText: 'Object key'),
+          ),
+          FilledButton(onPressed: _submitObject, child: const Text('Submit object import')),
+          const SizedBox(height: 16),
+          Text('Quotas', style: Theme.of(context).textTheme.titleMedium),
+          for (final q in quotas)
+            ListTile(
+              title: Text(q.metric),
+              subtitle: Text('Used ${q.used} / Limit ${q.limit}'),
             ),
+          const SizedBox(height: 16),
+          if (draft != null) ...[
+            Text('Latest draft', style: Theme.of(context).textTheme.titleMedium),
+            Semantics(
+              label: 'Draft title',
+              child: Text(draft!.suggestedTitle),
+            ),
+            Text(draft!.status),
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton(onPressed: _approve, child: const Text('Approve')),
+                TextButton(onPressed: _reject, child: const Text('Reject')),
+                OutlinedButton(
+                  onPressed: () => _translate('es'),
+                  child: const Text('Translate (es)'),
+                ),
+              ],
+            ),
+          ],
           if (status != null) Semantics(liveRegion: true, child: Text(status!)),
         ],
       ),

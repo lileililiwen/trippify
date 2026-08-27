@@ -340,6 +340,29 @@ class FakeApi implements AppApi {
   @override
   Future<ExportPayload> requestMyTenantExport() async =>
       const ExportPayload('u1', 'Display', 'en', []);
+  @override
+  Future<ImportJobDetail> submitTextImport(String sourceText) async => ImportJobDetail(
+        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, ''),
+        null);
+  @override
+  Future<ImportJobDetail> submitObjectImport(String objectKey, String kind) async => ImportJobDetail(
+        ImportJob('j1', 'u1', 'Photo', 'Completed', DateTime(2026, 1, 1), null, ''),
+        null);
+  @override
+  Future<ImportJobDetail> processImportJob(String jobId) async => ImportJobDetail(
+        ImportJob('j1', 'u1', 'Text', 'Completed', DateTime(2026, 1, 1), null, ''),
+        null);
+  @override
+  Future<ImportDraft> approveImportDraft(String draftId, String? guideId) async =>
+      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Approved', DateTime(2026, 1, 1), '[]');
+  @override
+  Future<ImportDraft> rejectImportDraft(String draftId) async =>
+      ImportDraft(draftId, 'j1', 'Imported', '{}', 'Rejected', DateTime(2026, 1, 1), '[]');
+  @override
+  Future<Translation> createTranslation(String sourceDraftId, String locale, String body) async =>
+      Translation('t1', sourceDraftId, locale, body, 'Linked', DateTime(2026, 1, 1), null);
+  @override
+  Future<List<QuotaRow>> listMyAiQuotas() async => const [];
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -962,5 +985,21 @@ void main() {
     expect(find.text('Quotas'), findsOneWidget);
     expect(find.text('No quotas defined yet.'), findsOneWidget);
     expect(find.text('Generate export'), findsOneWidget);
+  });
+  testWidgets('assisted import screen renders form and translation CTA', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assisted import'));
+    await tester.pumpAndSettle();
+    expect(find.text('Assisted import'), findsOneWidget);
+    expect(find.text('Submit text import'), findsOneWidget);
+    expect(find.text('Submit object import'), findsOneWidget);
+    expect(find.text('Quotas'), findsOneWidget);
   });
 }

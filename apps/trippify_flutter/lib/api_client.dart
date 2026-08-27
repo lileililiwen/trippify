@@ -120,6 +120,13 @@ abstract interface class AppApi {
   Future<TenantDashboard> updateMySubscription(String plan);
   Future<QuotaList> listMyTenantQuotas();
   Future<ExportPayload> requestMyTenantExport();
+  Future<ImportJobDetail> submitTextImport(String sourceText);
+  Future<ImportJobDetail> submitObjectImport(String objectKey, String kind);
+  Future<ImportJobDetail> processImportJob(String jobId);
+  Future<ImportDraft> approveImportDraft(String draftId, String? guideId);
+  Future<ImportDraft> rejectImportDraft(String draftId);
+  Future<Translation> createTranslation(String sourceDraftId, String locale, String body);
+  Future<List<QuotaRow>> listMyAiQuotas();
 }
 
 class GuideSummary {
@@ -742,6 +749,56 @@ class ExportPayload {
   final String userId, displayName;
   final String? locale;
   final List<ExportPurchaseRow> purchases;
+}
+
+class ImportJob {
+  const ImportJob(
+    this.id,
+    this.userId,
+    this.kind,
+    this.status,
+    this.submittedAt,
+    this.completedAt,
+    this.failureReason,
+  );
+  final String id, userId, kind, status, failureReason;
+  final DateTime submittedAt;
+  final DateTime? completedAt;
+}
+
+class ImportDraft {
+  const ImportDraft(
+    this.id,
+    this.importJobId,
+    this.suggestedTitle,
+    this.provenanceJson,
+    this.status,
+    this.createdAt,
+    this.suggestedNodesJson,
+  );
+  final String id, importJobId, suggestedTitle, provenanceJson, status, suggestedNodesJson;
+  final DateTime createdAt;
+}
+
+class ImportJobDetail {
+  const ImportJobDetail(this.job, this.draft);
+  final ImportJob job;
+  final ImportDraft? draft;
+}
+
+class Translation {
+  const Translation(
+    this.id,
+    this.sourceDraftId,
+    this.locale,
+    this.body,
+    this.status,
+    this.createdAt,
+    this.updatedAt,
+  );
+  final String id, sourceDraftId, locale, body, status;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
 }
 
 abstract interface class TokenStore {
@@ -1873,6 +1930,93 @@ class ApiClient implements AppApi {
         v['status'] as String,
         DateTime.parse(v['startsAt'] as String),
         _parseNullableDate(v['endsAt']),
+      );
+
+  @override
+  Future<ImportJobDetail> submitTextImport(String sourceText) async {
+    final v = await _json('POST', '/api/v1/me/imports/text', {'sourceText': sourceText});
+    return ImportJobDetail(_toImportJob(v['job'] as Map<String, dynamic>), v['draft'] == null ? null : _toImportDraft(v['draft'] as Map<String, dynamic>));
+  }
+
+  @override
+  Future<ImportJobDetail> submitObjectImport(String objectKey, String kind) async {
+    final v = await _json('POST', '/api/v1/me/imports/object', {'objectKey': objectKey, 'kind': kind});
+    return ImportJobDetail(_toImportJob(v['job'] as Map<String, dynamic>), v['draft'] == null ? null : _toImportDraft(v['draft'] as Map<String, dynamic>));
+  }
+
+  @override
+  Future<ImportJobDetail> processImportJob(String jobId) async {
+    final v = await _json('POST', '/api/v1/me/imports/$jobId/process', null);
+    return ImportJobDetail(_toImportJob(v), null);
+  }
+
+  @override
+  Future<ImportDraft> approveImportDraft(String draftId, String? guideId) async {
+    final v = await _json('POST', '/api/v1/me/drafts/$draftId/approve', {
+      if (guideId != null) 'guideId': guideId,
+    });
+    return _toImportDraft(v);
+  }
+
+  @override
+  Future<ImportDraft> rejectImportDraft(String draftId) async {
+    final v = await _json('POST', '/api/v1/me/drafts/$draftId/reject', null);
+    return _toImportDraft(v);
+  }
+
+  @override
+  Future<Translation> createTranslation(String sourceDraftId, String locale, String body) async {
+    final v = await _json('POST', '/api/v1/me/translations', {
+      'sourceDraftId': sourceDraftId,
+      'locale': locale,
+      'body': body,
+    });
+    return _toTranslation(v);
+  }
+
+  @override
+  Future<List<QuotaRow>> listMyAiQuotas() async {
+    final v = await _json('GET', '/api/v1/me/ai-quotas', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map((m) => QuotaRow(
+              m['metric'] as String,
+              m['used'] as int,
+              m['limit'] as int,
+              DateTime.parse(m['periodStart'] as String),
+              DateTime.parse(m['periodEnd'] as String),
+            ))
+        .toList();
+  }
+
+  static ImportJob _toImportJob(Map<String, dynamic> v) => ImportJob(
+        v['id'] as String,
+        v['userId'] as String,
+        v['kind'] as String,
+        v['status'] as String,
+        DateTime.parse(v['submittedAt'] as String),
+        _parseNullableDate(v['completedAt']),
+        v['failureReason'] as String? ?? '',
+      );
+
+  static ImportDraft _toImportDraft(Map<String, dynamic> v) => ImportDraft(
+        v['id'] as String,
+        v['importJobId'] as String,
+        v['suggestedTitle'] as String,
+        v['provenanceJson'] as String,
+        v['status'] as String,
+        DateTime.parse(v['createdAt'] as String),
+        v['suggestedNodesJson'] as String,
+      );
+
+  static Translation _toTranslation(Map<String, dynamic> v) => Translation(
+        v['id'] as String,
+        v['sourceDraftId'] as String,
+        v['locale'] as String,
+        v['body'] as String,
+        v['status'] as String,
+        DateTime.parse(v['createdAt'] as String),
+        _parseNullableDate(v['updatedAt']),
       );
 
   Future<Map<String, dynamic>> _json(
