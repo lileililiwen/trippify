@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api_client.dart';
 import 'design/states.dart';
 import 'design/theme.dart';
+import 'shell/signed_in_shell.dart';
 
 /// A section title that announces itself as a header to assistive tech.
 Widget sectionTitle(BuildContext context, String text, {TextStyle? style}) {
@@ -42,13 +43,37 @@ class TrippifyApp extends StatelessWidget {
       '/': (_) => SystemScreen(api: api),
       '/sign-in': (_) => SignInScreen(api: api),
       '/register': (_) => RegistrationScreen(api: api),
-      '/profile': (_) => ProfileScreen(api: api),
-      '/creator/enroll': (_) => CreatorEnrollmentScreen(api: api),
+      '/profile': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.home,
+        child: ProfileScreen(api: api),
+      ),
+      '/creator/enroll': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.library,
+        child: CreatorEnrollmentScreen(api: api),
+      ),
       '/creator': (_) => PublicCreatorScreen(api: api),
-      '/guides': (_) => GuideWorkspaceScreen(api: api),
-      '/planning': (_) => PlanningScreen(api: api),
-      '/discover': (_) => DiscoveryScreen(api: api),
-      '/library': (_) => LibraryScreen(api: api),
+      '/guides': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.create,
+        child: GuideWorkspaceScreen(api: api),
+      ),
+      '/planning': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.plan,
+        child: PlanningScreen(api: api),
+      ),
+      '/discover': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.discover,
+        child: DiscoveryScreen(api: api),
+      ),
+      '/library': (_) => _ShellRoute(
+        api: api,
+        destination: SignedInDestination.library,
+        child: LibraryScreen(api: api),
+      ),
       '/creator/dashboard': (_) => CreatorDashboardScreen(api: api),
       '/admin/operations': (_) => AdminOperationsScreen(api: api),
       '/notifications': (_) => NotificationsScreen(api: api),
@@ -60,6 +85,42 @@ class TrippifyApp extends StatelessWidget {
       '/system': (_) => SystemStatusScreen(api: api),
     },
   );
+}
+
+/// Wraps [child] in the [SignedInShell] and navigates to the right
+/// destination when the user taps a bottom-nav item.
+class _ShellRoute extends StatelessWidget {
+  const _ShellRoute({
+    required this.api,
+    required this.destination,
+    required this.child,
+  });
+  final AppApi api;
+  final SignedInDestination destination;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SignedInShell(
+      api: api,
+      current: destination,
+      onNavigate: (d) {
+        switch (d) {
+          case SignedInDestination.home:
+            Navigator.pushReplacementNamed(context, '/profile');
+          case SignedInDestination.discover:
+            Navigator.pushReplacementNamed(context, '/discover');
+          case SignedInDestination.library:
+            Navigator.pushReplacementNamed(context, '/library');
+          case SignedInDestination.plan:
+            Navigator.pushReplacementNamed(context, '/planning');
+          case SignedInDestination.create:
+            Navigator.pushReplacementNamed(context, '/guides');
+        }
+      },
+      child: child,
+    );
+  }
 }
 
 class SystemScreen extends StatefulWidget {
@@ -566,6 +627,23 @@ class _DayRouteSection extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            height: 200,
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(
+                'Map preview',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          ),
           if (route.markers.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -813,36 +891,66 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
   }
 
   Future<void> toggleFavorite(PublicGuide data) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       if (favorite) {
         await widget.api.removeFavorite(data.slug);
+        if (!mounted) return;
         setState(() => favorite = false);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Removed from favorites.')),
+        );
       } else {
         await widget.api.addFavorite(data.slug);
+        if (!mounted) return;
         setState(() => favorite = true);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Added to favorites.')),
+        );
       }
     } catch (_) {
-      setState(() => status = 'Favorites are unavailable.');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Favorites are unavailable.')),
+      );
     }
   }
 
   Future<void> fork(PublicGuide data) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final fork = await widget.api.forkGuide(data.slug);
-      setState(
-        () => status = 'Forked from "${fork.sourceTitle}" into a private draft.',
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Forked from "${fork.sourceTitle}" into a private draft.',
+          ),
+        ),
       );
     } catch (_) {
-      setState(() => status = 'Cannot fork this guide right now.');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Cannot fork this guide right now.')),
+      );
     }
   }
 
   Future<void> saveTrip(PublicGuide data) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await widget.api.createTrip(data.slug, title: data.title);
-      setState(() => status = 'Saved as a trip. Manage it from My library.');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Saved as a trip. Manage it from My library.'),
+        ),
+      );
     } catch (_) {
-      setState(() => status = 'Cannot save this guide as a trip.');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Cannot save this guide as a trip.')),
+      );
     }
   }
 
@@ -2238,6 +2346,8 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   late Future<TripInsightSummary> insights;
   final body = TextEditingController();
   String kind = 'TripJournal';
+  DateTime? evidenceDate;
+  String? evidenceAttachment;
   String? status;
   final party = TextEditingController(text: '2');
   final tripDays = TextEditingController(text: '5');
@@ -2259,18 +2369,54 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
 
   Future<void> submitEvidence() async {
     try {
+      final prefix = evidenceDate == null
+          ? ''
+          : '${evidenceDate!.toIso8601String().substring(0, 10)}: ';
       await widget.api.submitEvidence(
         widget.guideId,
         kind: kind,
-        body: body.text.trim(),
+        body: '$prefix${body.text.trim()}',
+        redactedReference: evidenceAttachment,
       );
       body.clear();
-      setState(() => status = 'Evidence submitted for review.');
+      setState(() {
+        evidenceDate = null;
+        evidenceAttachment = null;
+        status = 'Evidence submitted for review.';
+      });
       widget.onSubmit('Evidence submitted for review.');
       _refresh();
     } catch (_) {
       setState(() => status = 'Cannot submit evidence.');
     }
+  }
+
+  Future<void> _pickEvidenceDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: evidenceDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => evidenceDate = picked);
+    }
+  }
+
+  Future<void> _pickEvidenceAttachment() async {
+    // The backend does not yet accept attachments; surface a placeholder
+    // bottom sheet so the surface is discoverable. The future
+    // implementation will read a file picker result here.
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'Attachment uploads are coming soon. The picker will read a '
+          'local file or image and upload it with your evidence.',
+        ),
+      ),
+    );
   }
 
   Future<void> submitInsight() async {
@@ -2392,7 +2538,38 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
             controller: body,
             minLines: 3,
             maxLines: 6,
-            decoration: const InputDecoration(labelText: 'Evidence (50-4000 chars)'),
+            decoration: InputDecoration(
+              labelText: evidenceDate == null
+                  ? 'Evidence (50-4000 chars)'
+                  : 'Evidence (50-4000 chars, dated ${evidenceDate!.toIso8601String().substring(0, 10)})',
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickEvidenceDate,
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text(
+                    evidenceDate == null
+                        ? 'Pick trip date'
+                        : 'Trip date: ${evidenceDate!.toIso8601String().substring(0, 10)}',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickEvidenceAttachment,
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(
+                    evidenceAttachment == null
+                        ? 'Attach file'
+                        : 'Attached: $evidenceAttachment',
+                  ),
+                ),
+              ),
+            ],
           ),
           FilledButton(
             onPressed: submitEvidence,
@@ -3049,48 +3226,98 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final displayName = TextEditingController();
   String? saved;
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('My profile')),
-    body: FutureBuilder<PrivateProfile>(
-      future: widget.api.getProfile(),
-      builder: (context, s) {
-        if (s.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (s.hasError) {
-          return const Center(child: Text('Unable to load profile'));
-        }
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              s.data!.displayName.isEmpty
-                  ? 'Profile not completed'
-                  : s.data!.displayName,
-            ),
-            Text(s.data!.email),
-            Text('Account: ${s.data!.status}'),
-            TextFormField(
-              controller: displayName,
-              maxLength: 80,
-              decoration: const InputDecoration(
-                labelText: 'Display name',
-                helperText: 'Up to 80 characters',
+  void initState() {
+    super.initState();
+    displayName.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    displayName.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_isDirty(),
+    onPopInvokedWithResult: (didPop, _) async {
+      if (didPop) return;
+      await _confirmDiscard();
+    },
+    child: Scaffold(
+      appBar: AppBar(title: const Text('My profile')),
+      body: FutureBuilder<PrivateProfile>(
+        future: widget.api.getProfile(),
+        builder: (context, s) {
+          if (s.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (s.hasError) {
+            return const Center(child: Text('Unable to load profile'));
+          }
+          return ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text(
+                s.data!.displayName.isEmpty
+                    ? 'Profile not completed'
+                    : s.data!.displayName,
               ),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await widget.api.updateProfile(displayName.text, null, null);
-                setState(() => saved = 'Profile saved.');
-              },
-              child: const Text('Save profile'),
-            ),
-            if (saved != null) Semantics(liveRegion: true, child: Text(saved!)),
-          ],
-        );
-      },
+              Text(s.data!.email),
+              Text('Account: ${s.data!.status}'),
+              TextFormField(
+                controller: displayName,
+                maxLength: 80,
+                decoration: const InputDecoration(
+                  labelText: 'Display name',
+                  helperText: 'Up to 80 characters',
+                ),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await widget.api.updateProfile(displayName.text, null, null);
+                  if (!mounted) return;
+                  setState(() => saved = 'Profile saved.');
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Profile saved.')),
+                  );
+                },
+                child: const Text('Save profile'),
+              ),
+              if (saved != null)
+                Semantics(liveRegion: true, child: Text(saved!)),
+            ],
+          );
+        },
+      ),
     ),
   );
+
+  bool _isDirty() => displayName.text.trim().isNotEmpty;
+
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('You have unsaved changes. Leave anyway?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard changes'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 }
 
 class CreatorEnrollmentScreen extends StatefulWidget {
