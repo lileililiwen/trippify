@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -9,7 +10,36 @@ class SystemInfo {
   final String apiVersion;
 }
 
+class ApiException implements Exception {
+  const ApiException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+  @override
+  String toString() => message.isEmpty ? 'Request failed ($statusCode)' : message;
+}
+
+class MySummary {
+  const MySummary(
+    this.email,
+    this.displayName,
+    this.avatarUrl,
+    this.roles,
+    this.isCreator,
+    this.accountStatus,
+    this.emailConfirmed,
+  );
+  final String email;
+  final String displayName;
+  final String? avatarUrl;
+  final List<String> roles;
+  final bool isCreator;
+  final String accountStatus;
+  final bool emailConfirmed;
+}
+
 abstract interface class AppApi {
+  ValueListenable<String?> get tokens;
+  bool get isLoggedIn;
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
   Future<PrivateProfile> getProfile();
@@ -149,6 +179,9 @@ abstract interface class AppApi {
     String? reason,
   });
   Future<SystemDistributionInfo> getSystemInfo();
+  Future<MySummary> getMySummary();
+  Future<void> logout();
+  Future<void> resendVerification();
   Future<SystemStatus> getSystemStatus();
   Future<void> triggerSystemUpgrade();
   Future<BackupSnapshot> triggerSystemBackup({String? label});
@@ -905,37 +938,65 @@ class FeatureFlag {
 abstract interface class TokenStore {
   Future<String?> read();
   Future<void> write(String? token);
+  ValueListenable<String?> get listenable;
 }
 
 class MemoryTokenStore implements TokenStore {
-  String? _token;
+  MemoryTokenStore([String? initial]) {
+    if (initial != null) _notifier.value = initial;
+  }
+  final ValueNotifier<String?> _notifier = ValueNotifier<String?>(null);
   @override
-  Future<String?> read() async => _token;
+  Future<String?> read() async => _notifier.value;
   @override
   Future<void> write(String? token) async {
-    _token = token;
+    _notifier.value = token;
   }
+  void writeSync(String? token) => _notifier.value = token;
+  @override
+  ValueListenable<String?> get listenable => _notifier;
 }
 
 class SecureTokenStore implements TokenStore {
-  const SecureTokenStore([this._storage = const FlutterSecureStorage()]);
+  SecureTokenStore([FlutterSecureStorage? storage])
+      : _storage = storage ?? const FlutterSecureStorage() {
+    _hydrate();
+  }
   static const _key = 'trippify_access_token';
   final FlutterSecureStorage _storage;
+  final ValueNotifier<String?> _notifier = ValueNotifier<String?>(null);
+
+  Future<void> _hydrate() async {
+    _notifier.value = await _storage.read(key: _key);
+  }
+
   @override
-  Future<String?> read() => _storage.read(key: _key);
+  Future<String?> read() async => _notifier.value ?? await _storage.read(key: _key);
   @override
-  Future<void> write(String? token) => token == null
-      ? _storage.delete(key: _key)
-      : _storage.write(key: _key, value: token);
+  Future<void> write(String? token) async {
+    if (token == null) {
+      await _storage.delete(key: _key);
+    } else {
+      await _storage.write(key: _key, value: token);
+    }
+    _notifier.value = token;
+  }
+  @override
+  ValueListenable<String?> get listenable => _notifier;
 }
 
 class ApiClient implements AppApi {
   ApiClient(this.baseUri, {http.Client? client, TokenStore? tokenStore})
     : _client = client ?? http.Client(),
-      _tokens = tokenStore ?? const SecureTokenStore();
+      _tokens = tokenStore ?? SecureTokenStore();
   final Uri baseUri;
   final http.Client _client;
   final TokenStore _tokens;
+
+  @override
+  ValueListenable<String?> get tokens => _tokens.listenable;
+  @override
+  bool get isLoggedIn => (_tokens.listenable.value ?? '').isNotEmpty;
 
   @override
   Future<void> register(String email, String password) => _json(
@@ -951,6 +1012,34 @@ class ApiClient implements AppApi {
     });
     await _tokens.write(response['accessToken'] as String);
   }
+
+  @override
+  Future<MySummary> getMySummary() async {
+    final v = await _json('GET', '/api/v1/me/summary', null);
+    return MySummary(
+      v['email'] as String,
+      v['displayName'] as String,
+      v['avatarUrl'] as String?,
+      ((v['roles'] as List?) ?? const []).cast<String>(),
+      v['isCreator'] as bool,
+      v['accountStatus'] as String,
+      v['emailConfirmed'] as bool,
+    );
+  }
+
+  @override
+  Future<void> logout() async {
+    try {
+      await _json('POST', '/api/v1/auth/logout', null);
+    } catch (_) {
+      // best-effort: always clear locally so the home reverts to anonymous
+    }
+    await _tokens.write(null);
+  }
+
+  @override
+  Future<void> resendVerification() =>
+      _request('POST', '/api/v1/auth/resend-confirmation', null);
 
   @override
   Future<PrivateProfile> getProfile() async {
@@ -2308,9 +2397,40 @@ class ApiClient implements AppApi {
       _ => throw ArgumentError.value(method),
     };
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('Request failed (${response.statusCode})');
+      throw ApiException(response.statusCode, _extractError(response.body));
     }
     if (response.body.isEmpty) return <String, dynamic>{};
     return jsonDecode(response.body);
+  }
+
+  String _extractError(String body) {
+    if (body.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        // Handle ASP.NET Core ValidationProblem format with 'errors' map
+        if (decoded.containsKey('errors') && decoded['errors'] is Map<String, dynamic>) {
+          final errors = decoded['errors'] as Map<String, dynamic>;
+          final messages = <String>[];
+          errors.forEach((key, value) {
+            if (value is List && value.isNotEmpty) {
+              messages.add(value.first.toString());
+            } else if (value is String) {
+              messages.add(value);
+            }
+          });
+          if (messages.isNotEmpty) return messages.join('\n');
+        }
+        // Handle ProblemDetails 'detail' field
+        if (decoded.containsKey('detail') && decoded['detail'] is String && decoded['detail'].isNotEmpty) {
+          return decoded['detail'].toString();
+        }
+        // Handle generic 'message' field
+        if (decoded.containsKey('message') && decoded['message'] is String && decoded['message'].isNotEmpty) {
+          return decoded['message'].toString();
+        }
+      }
+    } catch (_) {}
+    return body.length > 200 ? '${body.substring(0, 200)}…' : body;
   }
 }

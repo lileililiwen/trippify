@@ -76,6 +76,16 @@ flutter test
 
 Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, and any other provider secrets through your secret store. Never commit secrets.
 
+> If you see `System.InvalidOperationException: Required production database configuration is missing.` at startup, the API is running in `Production` (or `Staging`) without a `ConnectionStrings:Postgres` value. Either unset `ASPNETCORE_ENVIRONMENT` (run as `Development` locally) or provide the connection string:
+>
+> ```sh
+> export ASPNETCORE_ENVIRONMENT=Development
+> # or for production:
+> export ConnectionStrings__Postgres="Host=...;Database=trippify;Username=...;Password=..."
+> ```
+>
+> EF Core reporting `No migrations were applied. The database is already up to date.` is normal during this flow — it means the schema is current; the crash happens afterwards when the API host boots.
+
 The `docker compose` stack is intentionally minimal: it starts the database and the API and waits for the DB healthcheck. For production deployments, swap the `docker-compose.yml` for your orchestrator of choice (Kubernetes, ECS, etc.) and reuse the multi-stage `src/Trippify.Api/Dockerfile`.
 
 After upgrading the binary, call `POST /api/v1/admin/system/upgrade` once to apply pending migrations deterministically. Capture a backup via `POST /api/v1/admin/system/backup` before every upgrade; the row stores the snapshot payload with audit metadata.

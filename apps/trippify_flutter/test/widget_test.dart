@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/main.dart';
 
@@ -14,7 +15,15 @@ class FakeApi implements AppApi {
     this.entitlements = const [],
     this.favorites = const [],
     this.trips = const [],
-  });
+    this.summary,
+    this.initialToken,
+    this.startLoggedIn = true,
+    this.loginShouldFail = false,
+  }) {
+    if (startLoggedIn) {
+      _tokens.writeSync(initialToken ?? 'fake-token');
+    }
+  }
   final Future<SystemDistributionInfo> result;
   final Object? error;
   final Object? routeError;
@@ -24,12 +33,33 @@ class FakeApi implements AppApi {
   final List<Entitlement> entitlements;
   final List<Favorite> favorites;
   final List<Trip> trips;
+  MySummary? summary;
+  String? initialToken;
+  final bool startLoggedIn;
+  bool loginShouldFail;
+  final MemoryTokenStore _tokens = MemoryTokenStore();
+
+  @override
+  ValueListenable<String?> get tokens => _tokens.listenable;
+  @override
+  bool get isLoggedIn => (tokens.value ?? '').isNotEmpty;
+
+  Future<void> signInAs(MySummary s, {String token = 'fake-token'}) async {
+    summary = s;
+    await _tokens.write(token);
+  }
+
+  Future<void> signOut() async => _tokens.write(null);
 
   @override
   Future<void> register(String email, String password) async {}
   @override
   Future<void> login(String email, String password) async {
+    if (loginShouldFail) {
+      throw const ApiException(401, 'Email or password is incorrect, or the account has not been confirmed.');
+    }
     if (error != null) throw error!;
+    await _tokens.write(initialToken ?? 'fake-token');
   }
 
   @override
@@ -397,6 +427,22 @@ class FakeApi implements AppApi {
     return result;
   }
   @override
+  Future<MySummary> getMySummary() async => summary ?? const MySummary(
+        'user@example.com',
+        'Traveler',
+        null,
+        [],
+        false,
+        'Active',
+        true,
+      );
+  @override
+  Future<void> logout() async {
+    await _tokens.write(null);
+  }
+  @override
+  Future<void> resendVerification() async {}
+  @override
   Future<SystemStatus> getSystemStatus() async => const SystemStatus('1.0.0', 0, 0, [], []);
   @override
   Future<void> triggerSystemUpgrade() async {}
@@ -436,6 +482,27 @@ class FakeApi implements AppApi {
   );
 }
 
+Future<void> scrollDown(WidgetTester tester, {double dy = -600}) async {
+  await tester.drag(find.byType(SingleChildScrollView), Offset(0, dy));
+  await tester.pumpAndSettle();
+}
+
+Future<void> tapText(WidgetTester tester, String text) async {
+  final finder = find.text(text);
+  // The text may live inside a nested scrollable (CardGrid never scrolls itself),
+  // so scroll the outer SingleChildScrollView first.
+  for (var i = 0; i < 6 && finder.evaluate().isEmpty; i++) {
+    await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+  }
+  if (finder.evaluate().isNotEmpty) {
+    await tester.scrollUntilVisible(finder, 200,
+        scrollable: find.byType(Scrollable).first);
+  }
+  await tester.tap(finder, warnIfMissed: false);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('shows API result', (tester) async {
     await tester.pumpWidget(
@@ -444,7 +511,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('1.0.0'), findsOneWidget);
+    expect(find.text('v1.0.0'), findsOneWidget);
   });
   testWidgets('shows retry state', (tester) async {
     await tester.pumpWidget(
@@ -452,6 +519,7 @@ void main() {
         api: FakeApi(
           Future.value(const SystemDistributionInfo('', 0)),
           error: StateError('offline'),
+          startLoggedIn: false,
         ),
       ),
     );
@@ -464,7 +532,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -472,7 +543,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pump();
-    expect(find.text('Enter a valid email and password.'), findsOneWidget);
+    expect(find.text('Enter a valid email and a password of at least 10 characters.'), findsOneWidget);
   });
   testWidgets('profile shows private account state', (tester) async {
     await tester.pumpWidget(
@@ -481,15 +552,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('My profile'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'My profile');
     expect(find.text('user@example.com'), findsOneWidget);
     expect(find.text('Account: Active'), findsOneWidget);
   });
   testWidgets('registration validates input', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -498,9 +571,47 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pump();
     expect(
-      find.text('Enter a valid email and strong password.'),
+      find.text('Enter a valid email and a password of at least 10 characters.'),
       findsOneWidget,
     );
+  });
+  testWidgets('registration success surfaces confirmation message and routes to sign-in', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), 'newbie@example.com');
+    await tester.enterText(find.byType(TextField).at(1), 'Strong!Pass123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Check newbie@example.com for a confirmation link'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Go to sign in'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Go to sign in'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+  });
+  testWidgets('sign-in surfaces the server error message on bad credentials', (tester) async {
+    final api = FakeApi(
+      Future.value(const SystemDistributionInfo('1.0.0', 0)),
+      startLoggedIn: false,
+    );
+    api.loginShouldFail = true;
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), 'bad@example.com');
+    await tester.enterText(find.byType(TextField).at(1), 'wrongpassword');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Email or password is incorrect'), findsOneWidget);
   });
   testWidgets('public creator search renders public fields', (tester) async {
     await tester.pumpWidget(
@@ -509,7 +620,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Find a creator'));
+    await tapText(tester, 'Find a creator');
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'traveler');
     await tester.tap(find.text('Find creator'));
@@ -521,14 +632,19 @@ void main() {
   testWidgets('guide workspace covers empty create reorder and saved states', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      TrippifyApp(
-        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
-      ),
-    );
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'creator@example.com',
+      'Creator',
+      null,
+      [],
+      true,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('My guides'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'My guides');
     expect(
       find.text('No guides yet. Create your first structured itinerary.'),
       findsOneWidget,
@@ -559,8 +675,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Plan routes & budget'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Plan routes & budget');
     expect(find.text('Osaka Castle'), findsOneWidget);
     expect(find.text('Nishiki Market'), findsOneWidget);
     expect(find.text('Osaka Castle → Nishiki Market'), findsOneWidget);
@@ -586,8 +701,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Plan routes & budget'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Plan routes & budget');
     expect(
       find.text('Planning access denied or unavailable.'),
       findsNWidgets(2),
@@ -602,8 +716,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Plan routes & budget'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Plan routes & budget');
     expect(
       find.text('No guides yet. Create a structured itinerary to plan routes.'),
       findsOneWidget,
@@ -616,7 +729,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     expect(
       find.text('No published guides match your search yet.'),
@@ -647,7 +760,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     expect(find.text('Tokyo luxury nights'), findsOneWidget);
     expect(find.text('2500 JPY'), findsOneWidget);
@@ -671,7 +784,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     expect(find.text('Discovery is unavailable. Try again later.'), findsOneWidget);
   });
@@ -699,7 +812,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -722,7 +835,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('My library'));
+    await tapText(tester, 'My library');
     await tester.pumpAndSettle();
     expect(find.text('No purchased guides yet.'), findsOneWidget);
     expect(find.text('No favorite guides yet.'), findsOneWidget);
@@ -753,7 +866,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -796,7 +909,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -838,7 +951,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -880,7 +993,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -905,14 +1018,19 @@ void main() {
   testWidgets('creator dashboard opens with empty and revenue states', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      TrippifyApp(
-        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
-      ),
-    );
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'creator@example.com',
+      'Creator',
+      null,
+      [],
+      true,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Creator dashboard'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Creator dashboard');
     expect(find.text('Creator dashboard'), findsOneWidget);
     expect(find.text('No revenue yet.'), findsOneWidget);
     expect(find.text('No orders yet.'), findsOneWidget);
@@ -924,16 +1042,19 @@ void main() {
   testWidgets('admin operations screen handles forbidden states', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      TrippifyApp(
-        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
-      ),
-    );
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'admin@example.com',
+      'Admin',
+      null,
+      ['Administrator'],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -400));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Admin operations'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Admin operations');
     expect(find.text('Admin operations'), findsOneWidget);
     expect(find.text('Audit log'), findsOneWidget);
     expect(find.text('Users'), findsOneWidget);
@@ -946,10 +1067,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Notifications'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Notifications');
     expect(find.text('No notifications yet.'), findsOneWidget);
   });
   testWidgets('notification preferences screen renders toggles', (tester) async {
@@ -959,10 +1077,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Notification preferences'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Notification preferences');
     expect(find.byType(SwitchListTile), findsWidgets);
   });
   testWidgets('public guide exposes release history empty state', (tester) async {
@@ -988,7 +1103,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Discover guides'));
+    await tapText(tester, 'Discover guides');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tokyo luxury nights'));
     await tester.pumpAndSettle();
@@ -1006,10 +1121,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Plugin catalog'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Plugin catalog');
     expect(find.text('Plugin catalog'), findsOneWidget);
     expect(find.text('My installations'), findsOneWidget);
     expect(find.text('No installations yet.'), findsOneWidget);
@@ -1022,10 +1134,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('My tenant'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'My tenant');
     expect(find.text('My tenant'), findsOneWidget);
     expect(find.text('Plan Free (Active)'), findsOneWidget);
     expect(find.text('Choose a plan'), findsOneWidget);
@@ -1040,10 +1149,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Assisted import'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Assisted import');
     expect(find.text('Assisted import'), findsOneWidget);
     expect(find.text('Submit text import'), findsOneWidget);
     expect(find.text('Submit object import'), findsOneWidget);
@@ -1056,10 +1162,7 @@ testWidgets('license panel screen renders empty state and create default action'
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('License policies'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'License policies');
     expect(find.text('License policies'), findsOneWidget);
     expect(find.text('No license policies yet.'), findsOneWidget);
     expect(find.text('Create default license'), findsOneWidget);
@@ -1071,14 +1174,142 @@ testWidgets('license panel screen renders empty state and create default action'
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Self-hosted status'));
-    await tester.pumpAndSettle();
+    await tapText(tester, 'Self-hosted status');
     expect(find.text('Self-hosted status'), findsOneWidget);
     expect(find.text('1.0.0'), findsOneWidget);
     expect(find.text('No feature flags defined.'), findsOneWidget);
     expect(find.text('Run upgrade'), findsOneWidget);
     expect(find.text('Capture backup'), findsOneWidget);
+  });
+  testWidgets('anonymous home hides every protected entry', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Become a creator'), findsNothing);
+    expect(find.text('Creator dashboard'), findsNothing);
+    expect(find.text('Admin operations'), findsNothing);
+    expect(find.text('Notifications'), findsNothing);
+    expect(find.text('My profile'), findsNothing);
+    expect(find.text('Self-hosted status'), findsOneWidget);
+  });
+  testWidgets('signed-in non-creator home shows Become a creator and hides Creator dashboard', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'traveler@example.com',
+      'Traveler',
+      null,
+      [],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome back, Traveler.'), findsOneWidget);
+    expect(find.text('Become a creator'), findsOneWidget);
+    expect(find.text('Creator dashboard'), findsNothing);
+    expect(find.text('Admin operations'), findsNothing);
+  });
+  testWidgets('signed-in creator home shows Creator dashboard and hides Become a creator', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'creator@example.com',
+      'Creator',
+      null,
+      [],
+      true,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(find.text('Become a creator'), findsNothing);
+    expect(find.text('Creator dashboard'), findsOneWidget);
+    expect(find.text('My guides'), findsOneWidget);
+    expect(find.text('Admin operations'), findsNothing);
+  });
+  testWidgets('administrator home surfaces Admin operations in the workspace', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'admin@example.com',
+      'Admin',
+      null,
+      ['Administrator'],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(find.text('Admin operations'), findsOneWidget);
+  });
+  testWidgets('email-unverified banner appears for unconfirmed accounts', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'newbie@example.com',
+      '',
+      null,
+      [],
+      false,
+      'Active',
+      false,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Verify your email'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextButton, 'Resend'), findsOneWidget);
+  });
+  testWidgets('signing out from the home surface reverts to anonymous', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)));
+    await api.signInAs(const MySummary(
+      'traveler@example.com',
+      'Traveler',
+      null,
+      [],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out'), findsNothing);
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+  });
+  testWidgets('token listener reacts to externally written token', (tester) async {
+    final api = FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0)), startLoggedIn: false);
+    await tester.pumpWidget(TrippifyApp(api: api));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
+    await api.signInAs(const MySummary(
+      't@example.com',
+      'T',
+      null,
+      [],
+      false,
+      'Active',
+      true,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome back, T.'), findsOneWidget);
+    await api.signOut();
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
   });
 }
