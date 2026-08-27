@@ -327,6 +327,19 @@ class FakeApi implements AppApi {
   Future<void> disablePlugin(String pluginId) async {}
   @override
   Future<void> uninstallPlugin(String pluginId) async {}
+  @override
+  Future<TenantDashboard> getMyTenant() async => TenantDashboard(
+        TenantSummary('t1', 'default', 'Default Tenant', '', 'Active', '{}', DateTime(2026, 1, 1)),
+        Subscription('s1', 'Free', 'Active', DateTime(2026, 1, 1), null));
+  @override
+  Future<TenantDashboard> updateMySubscription(String plan) async => TenantDashboard(
+        TenantSummary('t1', 'default', 'Default Tenant', '', 'Active', '{}', DateTime(2026, 1, 1)),
+        Subscription('s1', plan, 'Active', DateTime(2026, 1, 1), null));
+  @override
+  Future<QuotaList> listMyTenantQuotas() async => const QuotaList(0, []);
+  @override
+  Future<ExportPayload> requestMyTenantExport() async =>
+      const ExportPayload('u1', 'Display', 'en', []);
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -931,5 +944,23 @@ void main() {
     expect(find.text('My installations'), findsOneWidget);
     expect(find.text('No installations yet.'), findsOneWidget);
     expect(find.text('No plugins available yet.'), findsOneWidget);
+  });
+  testWidgets('tenant dashboard renders plan, quotas, and export', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My tenant'));
+    await tester.pumpAndSettle();
+    expect(find.text('My tenant'), findsOneWidget);
+    expect(find.text('Plan Free (Active)'), findsOneWidget);
+    expect(find.text('Choose a plan'), findsOneWidget);
+    expect(find.text('Quotas'), findsOneWidget);
+    expect(find.text('No quotas defined yet.'), findsOneWidget);
+    expect(find.text('Generate export'), findsOneWidget);
   });
 }

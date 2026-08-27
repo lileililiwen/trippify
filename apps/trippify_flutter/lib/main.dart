@@ -40,6 +40,7 @@ class TrippifyApp extends StatelessWidget {
       '/notifications': (_) => NotificationsScreen(api: api),
       '/notification-preferences': (_) => NotificationPreferencesScreen(api: api),
       '/plugins': (_) => PluginCatalogScreen(api: api),
+      '/tenant': (_) => TenantDashboardScreen(api: api),
     },
   );
 }
@@ -172,6 +173,15 @@ TextButton(
               ),
             ),
             child: const Text('Plugin catalog'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => TenantDashboardScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('My tenant'),
           ),
               ],
             );
@@ -918,6 +928,124 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class TenantDashboardScreen extends StatefulWidget {
+  const TenantDashboardScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<TenantDashboardScreen> createState() => _TenantDashboardScreenState();
+}
+
+class _TenantDashboardScreenState extends State<TenantDashboardScreen> {
+  TenantDashboard? dashboard;
+  List<QuotaRow> quotas = const [];
+  ExportPayload? export;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final value = await widget.api.getMyTenant();
+      final quotaList = await widget.api.listMyTenantQuotas();
+      if (mounted) {
+        setState(() {
+          dashboard = value;
+          quotas = quotaList.items;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => status = 'Tenant dashboard unavailable.');
+    }
+  }
+
+  Future<void> _upgrade(String plan) async {
+    try {
+      final updated = await widget.api.updateMySubscription(plan);
+      setState(() {
+        dashboard = updated;
+        status = 'Plan changed to $plan.';
+      });
+    } catch (_) {
+      setState(() => status = 'Cannot update plan.');
+    }
+  }
+
+  Future<void> _export() async {
+    try {
+      final payload = await widget.api.requestMyTenantExport();
+      setState(() {
+        export = payload;
+        status = 'Export ready with ${payload.purchases.length} purchase(s).';
+      });
+    } catch (_) {
+      setState(() => status = 'Export failed.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (dashboard == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('My tenant')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final t = dashboard!.tenant;
+    final s = dashboard!.subscription;
+    return Scaffold(
+      appBar: AppBar(title: const Text('My tenant')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Semantics(label: 'Tenant summary', child: Text(t.displayName, style: Theme.of(context).textTheme.titleLarge)),
+          Text(t.primaryDomain.isEmpty ? 'No custom domain' : t.primaryDomain),
+          Text('Plan ${s.plan} (${s.status})'),
+          const SizedBox(height: 16),
+          Text('Choose a plan', style: Theme.of(context).textTheme.titleMedium),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final plan in const ['Free', 'Pro', 'Enterprise'])
+                OutlinedButton(
+                  onPressed: s.plan == plan ? null : () => _upgrade(plan),
+                  child: Text(plan),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('Quotas', style: Theme.of(context).textTheme.titleMedium),
+          if (quotas.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text('No quotas defined yet.'),
+            )
+          else
+            for (final q in quotas)
+              ListTile(
+                title: Text(q.metric),
+                subtitle: Text('Used ${q.used} / Limit ${q.limit}'),
+              ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: _export,
+            child: const Text('Generate export'),
+          ),
+          if (export != null)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text('Export ${export!.purchases.length} record(s) for ${export!.displayName}.'),
+            ),
+          if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+        ],
+      ),
+    );
+  }
 }
 
 class PluginCatalogScreen extends StatefulWidget {

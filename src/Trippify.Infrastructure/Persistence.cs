@@ -44,6 +44,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<PluginInstallation> PluginInstallations => Set<PluginInstallation>();
     public DbSet<PluginPermissionGrant> PluginPermissionGrants => Set<PluginPermissionGrant>();
     public DbSet<PluginAuditEntry> PluginAuditEntries => Set<PluginAuditEntry>();
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<QuotaUsage> QuotaUsages => Set<QuotaUsage>();
+    public DbSet<TenantAuditEntry> TenantAuditEntries => Set<TenantAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

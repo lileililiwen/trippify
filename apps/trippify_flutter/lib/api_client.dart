@@ -116,6 +116,10 @@ abstract interface class AppApi {
   Future<void> enablePlugin(String pluginId);
   Future<void> disablePlugin(String pluginId);
   Future<void> uninstallPlugin(String pluginId);
+  Future<TenantDashboard> getMyTenant();
+  Future<TenantDashboard> updateMySubscription(String plan);
+  Future<QuotaList> listMyTenantQuotas();
+  Future<ExportPayload> requestMyTenantExport();
 }
 
 class GuideSummary {
@@ -672,6 +676,72 @@ class PluginInstallation {
   final String id, pluginId, pluginSlug, pluginDisplayName, lifecycle;
   final DateTime installedAt;
   final List<String> scopes;
+}
+
+class TenantSummary {
+  const TenantSummary(
+    this.id,
+    this.slug,
+    this.displayName,
+    this.primaryDomain,
+    this.status,
+    this.brandingJson,
+    this.createdAt,
+  );
+  final String id, slug, displayName, primaryDomain, status, brandingJson;
+  final DateTime createdAt;
+}
+
+class Subscription {
+  const Subscription(
+    this.id,
+    this.plan,
+    this.status,
+    this.startsAt,
+    this.endsAt,
+  );
+  final String id, plan, status;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+}
+
+class TenantDashboard {
+  const TenantDashboard(this.tenant, this.subscription);
+  final TenantSummary tenant;
+  final Subscription subscription;
+}
+
+class QuotaRow {
+  const QuotaRow(
+    this.metric,
+    this.used,
+    this.limit,
+    this.periodStart,
+    this.periodEnd,
+  );
+  final String metric;
+  final int used, limit;
+  final DateTime periodStart, periodEnd;
+}
+
+class QuotaList {
+  const QuotaList(this.total, this.items);
+  final int total;
+  final List<QuotaRow> items;
+}
+
+class ExportPurchaseRow {
+  const ExportPurchaseRow(this.guideId, this.orderId, this.grantedAt, this.revokedAt);
+  final String guideId, orderId;
+  final DateTime grantedAt;
+  final DateTime? revokedAt;
+}
+
+class ExportPayload {
+  const ExportPayload(this.userId, this.displayName, this.locale, this.purchases);
+  final String userId, displayName;
+  final String? locale;
+  final List<ExportPurchaseRow> purchases;
 }
 
 abstract interface class TokenStore {
@@ -1736,6 +1806,73 @@ class ApiClient implements AppApi {
         v['lifecycle'] as String,
         DateTime.parse(v['installedAt'] as String),
         ((v['scopes'] as List?) ?? const []).cast<String>(),
+      );
+
+  @override
+  Future<TenantDashboard> getMyTenant() async {
+    final v = await _json('GET', '/api/v1/me/tenant', null);
+    return TenantDashboard(_toTenant(v['tenant'] as Map<String, dynamic>), _toSubscription(v['subscription'] as Map<String, dynamic>));
+  }
+
+  @override
+  Future<TenantDashboard> updateMySubscription(String plan) async {
+    final v = await _json('POST', '/api/v1/me/tenant/subscription', {'plan': plan});
+    return TenantDashboard(_toTenant(v['tenant'] as Map<String, dynamic>), _toSubscription(v['subscription'] as Map<String, dynamic>));
+  }
+
+  @override
+  Future<QuotaList> listMyTenantQuotas() async {
+    final v = await _json('GET', '/api/v1/me/tenant/quotas', null);
+    return QuotaList(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => QuotaRow(
+                m['metric'] as String,
+                m['used'] as int,
+                m['limit'] as int,
+                DateTime.parse(m['periodStart'] as String),
+                DateTime.parse(m['periodEnd'] as String),
+              ))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<ExportPayload> requestMyTenantExport() async {
+    final v = await _json('POST', '/api/v1/me/tenant/export', null);
+    return ExportPayload(
+      v['userId'] as String,
+      v['displayName'] as String? ?? '',
+      v['locale'] as String?,
+      ((v['purchases'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => ExportPurchaseRow(
+                m['guideId'] as String,
+                m['orderId'] as String,
+                DateTime.parse(m['grantedAt'] as String),
+                _parseNullableDate(m['revokedAt']),
+              ))
+          .toList(),
+    );
+  }
+
+  static TenantSummary _toTenant(Map<String, dynamic> v) => TenantSummary(
+        v['id'] as String,
+        v['slug'] as String,
+        v['displayName'] as String,
+        v['primaryDomain'] as String,
+        v['status'] as String,
+        v['brandingJson'] as String? ?? '{}',
+        DateTime.parse(v['createdAt'] as String),
+      );
+
+  static Subscription _toSubscription(Map<String, dynamic> v) => Subscription(
+        v['id'] as String,
+        v['plan'] as String,
+        v['status'] as String,
+        DateTime.parse(v['startsAt'] as String),
+        _parseNullableDate(v['endsAt']),
       );
 
   Future<Map<String, dynamic>> _json(
