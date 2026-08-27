@@ -97,6 +97,14 @@ abstract interface class AppApi {
   Future<AdminAuditResponse> listAdminAudit({int? limit});
   Future<AdminUsersResponse> listAdminUsers({int? limit});
   Future<AdminCreatorsResponse> listAdminCreators({int? limit});
+  Future<FollowStatus> getCreatorFollowStatus(String slug);
+  Future<FollowStatus> followCreator(String slug);
+  Future<void> unfollowCreator(String slug);
+  Future<int> getCreatorFollowersCount(String slug);
+  Future<NotificationList> listNotifications({int? limit});
+  Future<void> markNotificationRead(String id);
+  Future<NotificationPreferences> getNotificationPreferences();
+  Future<NotificationPreferences> updateNotificationPreferences(NotificationPreferences preferences);
 }
 
 class GuideSummary {
@@ -525,6 +533,65 @@ class AdminCreatorsResponse {
   const AdminCreatorsResponse(this.total, this.items);
   final int total;
   final List<AdminCreatorRow> items;
+}
+
+class FollowStatus {
+  const FollowStatus(this.slug, this.following, this.followedAt);
+  final String slug;
+  final bool following;
+  final DateTime? followedAt;
+}
+
+class NotificationEntry {
+  const NotificationEntry(
+    this.id,
+    this.kind,
+    this.title,
+    this.body,
+    this.targetSlug,
+    this.targetGuideId,
+    this.createdAt,
+    this.readAt,
+  );
+  final String id, kind, title, body;
+  final String? targetSlug, targetGuideId;
+  final DateTime createdAt;
+  final DateTime? readAt;
+}
+
+class NotificationList {
+  const NotificationList(this.unreadCount, this.items);
+  final int unreadCount;
+  final List<NotificationEntry> items;
+}
+
+class NotificationPreferences {
+  NotificationPreferences({
+    required this.emailEnabled,
+    required this.inAppEnabled,
+    required this.newGuidePublishedEmail,
+    required this.newGuidePublishedInApp,
+    required this.newReviewOnMyGuideEmail,
+    required this.newReviewOnMyGuideInApp,
+    required this.newReplyToReviewEmail,
+    required this.newReplyToReviewInApp,
+    required this.followerGainedEmail,
+    required this.followerGainedInApp,
+    required this.evidenceReviewedEmail,
+    required this.evidenceReviewedInApp,
+  });
+  bool emailEnabled,
+      inAppEnabled,
+      newGuidePublishedEmail,
+      newGuidePublishedInApp,
+      newReviewOnMyGuideEmail,
+      newReviewOnMyGuideInApp,
+      newReplyToReviewEmail,
+      newReplyToReviewInApp,
+      followerGainedEmail,
+      followerGainedInApp,
+      evidenceReviewedEmail,
+      evidenceReviewedInApp;
 }
 
 abstract interface class TokenStore {
@@ -1351,6 +1418,113 @@ class ApiClient implements AppApi {
               ))
           .toList(),
     );
+  }
+
+  @override
+  Future<FollowStatus> getCreatorFollowStatus(String slug) async {
+    final v = await _json('GET', '/api/v1/creators/$slug/follow', null);
+    return FollowStatus(
+      v['slug'] as String,
+      v['following'] as bool,
+      _parseNullableDate(v['followedAt']),
+    );
+  }
+
+  @override
+  Future<FollowStatus> followCreator(String slug) async {
+    final v = await _json('POST', '/api/v1/creators/$slug/follow', null);
+    return FollowStatus(
+      v['slug'] as String,
+      v['following'] as bool,
+      _parseNullableDate(v['followedAt']),
+    );
+  }
+
+  @override
+  Future<void> unfollowCreator(String slug) =>
+      _request('DELETE', '/api/v1/creators/$slug/follow', null);
+
+  @override
+  Future<int> getCreatorFollowersCount(String slug) async {
+    final v = await _json('GET', '/api/v1/creators/$slug/followers/count', null);
+    return v['followers'] as int;
+  }
+
+  @override
+  Future<NotificationList> listNotifications({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/me/notifications${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return NotificationList(
+      v['unreadCount'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map(_toNotification)
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> markNotificationRead(String id) =>
+      _request('POST', '/api/v1/me/notifications/$id/read', null);
+
+  @override
+  Future<NotificationPreferences> getNotificationPreferences() async {
+    final v = await _json('GET', '/api/v1/me/notification-preferences', null);
+    return _toPreferences(v);
+  }
+
+  @override
+  Future<NotificationPreferences> updateNotificationPreferences(
+    NotificationPreferences preferences,
+  ) async {
+    final v = await _json('PUT', '/api/v1/me/notification-preferences', {
+      'emailEnabled': preferences.emailEnabled,
+      'inAppEnabled': preferences.inAppEnabled,
+      'newGuidePublishedEmail': preferences.newGuidePublishedEmail,
+      'newGuidePublishedInApp': preferences.newGuidePublishedInApp,
+      'newReviewOnMyGuideEmail': preferences.newReviewOnMyGuideEmail,
+      'newReviewOnMyGuideInApp': preferences.newReviewOnMyGuideInApp,
+      'newReplyToReviewEmail': preferences.newReplyToReviewEmail,
+      'newReplyToReviewInApp': preferences.newReplyToReviewInApp,
+      'followerGainedEmail': preferences.followerGainedEmail,
+      'followerGainedInApp': preferences.followerGainedInApp,
+      'evidenceReviewedEmail': preferences.evidenceReviewedEmail,
+      'evidenceReviewedInApp': preferences.evidenceReviewedInApp,
+    });
+    return _toPreferences(v);
+  }
+
+  static NotificationEntry _toNotification(Map<String, dynamic> v) => NotificationEntry(
+        v['id'] as String,
+        v['kind'] as String,
+        v['title'] as String,
+        v['body'] as String,
+        v['targetSlug'] as String?,
+        v['targetGuideId'] == null ? null : v['targetGuideId'].toString(),
+        DateTime.parse(v['createdAt'] as String),
+        _parseNullableDate(v['readAt']),
+      );
+
+  static NotificationPreferences _toPreferences(Map<String, dynamic> v) =>
+      NotificationPreferences(
+        emailEnabled: v['emailEnabled'] as bool,
+        inAppEnabled: v['inAppEnabled'] as bool,
+        newGuidePublishedEmail: v['newGuidePublishedEmail'] as bool,
+        newGuidePublishedInApp: v['newGuidePublishedInApp'] as bool,
+        newReviewOnMyGuideEmail: v['newReviewOnMyGuideEmail'] as bool,
+        newReviewOnMyGuideInApp: v['newReviewOnMyGuideInApp'] as bool,
+        newReplyToReviewEmail: v['newReplyToReviewEmail'] as bool,
+        newReplyToReviewInApp: v['newReplyToReviewInApp'] as bool,
+        followerGainedEmail: v['followerGainedEmail'] as bool,
+        followerGainedInApp: v['followerGainedInApp'] as bool,
+        evidenceReviewedEmail: v['evidenceReviewedEmail'] as bool,
+        evidenceReviewedInApp: v['evidenceReviewedInApp'] as bool,
+      );
+
+  static DateTime? _parseNullableDate(Object? value) {
+    if (value is String && value.isNotEmpty) return DateTime.parse(value);
+    return null;
   }
 
   Future<Map<String, dynamic>> _json(

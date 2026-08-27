@@ -37,6 +37,8 @@ class TrippifyApp extends StatelessWidget {
       '/library': (_) => LibraryScreen(api: api),
       '/creator/dashboard': (_) => CreatorDashboardScreen(api: api),
       '/admin/operations': (_) => AdminOperationsScreen(api: api),
+      '/notifications': (_) => NotificationsScreen(api: api),
+      '/notification-preferences': (_) => NotificationPreferencesScreen(api: api),
     },
   );
 }
@@ -134,15 +136,33 @@ body: Center(
                   ),
                   child: const Text('Creator dashboard'),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => AdminOperationsScreen(api: widget.api),
-                    ),
-                  ),
-                  child: const Text('Admin operations'),
-                ),
+TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => AdminOperationsScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Admin operations'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => NotificationsScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Notifications'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => NotificationPreferencesScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Notification preferences'),
+          ),
               ],
             );
           },
@@ -1574,50 +1594,303 @@ class _EntitlementList extends StatelessWidget {
   );
 }
 
-class AuthorScreen extends StatelessWidget {
+class AuthorScreen extends StatefulWidget {
   const AuthorScreen({super.key, required this.api, required this.slug});
   final AppApi api;
   final String slug;
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Author')),
-    body: FutureBuilder<AuthorPage>(
-      future: api.getAuthor(slug),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return const Center(child: Text('Author not found.'));
-        }
-        final author = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(author.displayName,
-                style: Theme.of(context).textTheme.titleLarge),
-            Text(author.biography),
-            Text(author.travelCountries.join(', ')),
-            const SizedBox(height: 16),
-            if (author.guides.isEmpty)
-              const Text('No published guides yet.'),
-            for (final guide in author.guides)
-              ListTile(
-                title: Text(guide.title),
-                subtitle: Text('${guide.countryCode} · ${guide.pricing}'),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        PublicGuideScreen(api: api, slug: guide.slug),
+  State<AuthorScreen> createState() => _AuthorScreenState();
+}
+
+class _AuthorScreenState extends State<AuthorScreen> {
+  Future<AuthorPage>? authorFuture;
+  Future<int>? followersFuture;
+  Future<FollowStatus>? followFuture;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    authorFuture = widget.api.getAuthor(widget.slug);
+    followersFuture = widget.api.getCreatorFollowersCount(widget.slug);
+    followFuture = widget.api.getCreatorFollowStatus(widget.slug);
+  }
+
+  Future<void> toggleFollow() async {
+    setState(() => busy = true);
+    try {
+      final status = await followFuture;
+      if (status == null) return;
+      if (status.following) {
+        await widget.api.unfollowCreator(widget.slug);
+      } else {
+        await widget.api.followCreator(widget.slug);
+      }
+      setState(() {
+        followFuture = widget.api.getCreatorFollowStatus(widget.slug);
+        followersFuture = widget.api.getCreatorFollowersCount(widget.slug);
+      });
+    } catch (_) {
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final api = widget.api;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Author')),
+      body: FutureBuilder<AuthorPage>(
+        future: authorFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(child: Text('Author not found.'));
+          }
+          final author = snapshot.data!;
+          return ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text(author.displayName,
+                  style: Theme.of(context).textTheme.titleLarge),
+              Text(author.biography),
+              Text(author.travelCountries.join(', ')),
+              const SizedBox(height: 16),
+              FutureBuilder<FollowStatus>(
+                future: followFuture,
+                builder: (context, snapshot) {
+                  final status = snapshot.data;
+                  return Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: busy ? null : toggleFollow,
+                        child: Text(status?.following == true
+                            ? 'Unfollow'
+                            : 'Follow'),
+                      ),
+                      const SizedBox(width: 16),
+                      FutureBuilder<int>(
+                        future: followersFuture,
+                        builder: (context, snapshot) {
+                          final value = snapshot.data ?? 0;
+                          return Semantics(
+                            label: 'Followers count',
+                            child: Text('Followers $value'),
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              if (author.guides.isEmpty)
+                const Text('No published guides yet.'),
+              for (final guide in author.guides)
+                ListTile(
+                  title: Text(guide.title),
+                  subtitle: Text('${guide.countryCode} · ${guide.pricing}'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          PublicGuideScreen(api: api, slug: guide.slug),
+                    ),
                   ),
                 ),
-              ),
-          ],
-        );
-      },
-    ),
-  );
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class NotificationsScreen extends StatefulWidget {
+  const NotificationsScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  late Future<NotificationList> future;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    final pending = widget.api.listNotifications();
+    setState(() {
+      future = pending;
+    });
+  }
+
+  Future<void> markRead(String id) async {
+    try {
+      await widget.api.markNotificationRead(id);
+      _refresh();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notifications')),
+      body: RefreshIndicator(
+        onRefresh: () async => _refresh(),
+        child: FutureBuilder<NotificationList>(
+          future: future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text('Notifications are unavailable.'),
+              );
+            }
+            final items = snapshot.data!.items;
+            if (items.isEmpty) {
+              return const Center(
+                child: Text('No notifications yet.'),
+              );
+            }
+            return ListView(
+              children: [
+                for (final entry in items)
+                  ListTile(
+                    leading: Icon(
+                      entry.readAt == null
+                          ? Icons.mark_email_unread
+                          : Icons.mark_email_read,
+                    ),
+                    title: Text(entry.title),
+                    subtitle: Text(entry.body),
+                    onTap: entry.readAt == null
+                        ? () {
+                            markRead(entry.id);
+                          }
+                        : null,
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class NotificationPreferencesScreen extends StatefulWidget {
+  const NotificationPreferencesScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<NotificationPreferencesScreen> createState() =>
+      _NotificationPreferencesScreenState();
+}
+
+class _NotificationPreferencesScreenState
+    extends State<NotificationPreferencesScreen> {
+  NotificationPreferences? prefs;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await widget.api.getNotificationPreferences();
+      if (mounted) setState(() => prefs = value);
+    } catch (_) {
+      if (mounted) setState(() => status = 'Cannot load preferences.');
+    }
+  }
+
+  Future<void> _save() async {
+    if (prefs == null) return;
+    try {
+      final updated = await widget.api.updateNotificationPreferences(prefs!);
+      if (mounted) setState(() {
+        prefs = updated;
+        status = 'Preferences saved.';
+      });
+    } catch (_) {
+      if (mounted) setState(() => status = 'Cannot save preferences.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (prefs == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Notification preferences')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final p = prefs!;
+    Widget toggle(String label, bool value, void Function(bool) onChanged) {
+      return SwitchListTile(
+        title: Text(label),
+        value: value,
+        onChanged: onChanged,
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notification preferences'),
+        actions: [
+          IconButton(onPressed: _save, icon: const Icon(Icons.save)),
+        ],
+      ),
+      body: ListView(
+        children: [
+          toggle('Email enabled', p.emailEnabled,
+              (v) => setState(() => prefs!.emailEnabled = v)),
+          toggle('In-app enabled', p.inAppEnabled,
+              (v) => setState(() => prefs!.inAppEnabled = v)),
+          const Divider(),
+          toggle('New guide email', p.newGuidePublishedEmail,
+              (v) => setState(() => prefs!.newGuidePublishedEmail = v)),
+          toggle('New guide in-app', p.newGuidePublishedInApp,
+              (v) => setState(() => prefs!.newGuidePublishedInApp = v)),
+          toggle('New review on my guide email', p.newReviewOnMyGuideEmail,
+              (v) => setState(() => prefs!.newReviewOnMyGuideEmail = v)),
+          toggle(
+              'New review on my guide in-app',
+              p.newReviewOnMyGuideInApp,
+              (v) => setState(() => prefs!.newReviewOnMyGuideInApp = v)),
+          toggle('New reply email', p.newReplyToReviewEmail,
+              (v) => setState(() => prefs!.newReplyToReviewEmail = v)),
+          toggle('New reply in-app', p.newReplyToReviewInApp,
+              (v) => setState(() => prefs!.newReplyToReviewInApp = v)),
+          toggle('Follower gained email', p.followerGainedEmail,
+              (v) => setState(() => prefs!.followerGainedEmail = v)),
+          toggle('Follower gained in-app', p.followerGainedInApp,
+              (v) => setState(() => prefs!.followerGainedInApp = v)),
+          toggle('Evidence reviewed email', p.evidenceReviewedEmail,
+              (v) => setState(() => prefs!.evidenceReviewedEmail = v)),
+          toggle('Evidence reviewed in-app', p.evidenceReviewedInApp,
+              (v) => setState(() => prefs!.evidenceReviewedInApp = v)),
+          if (status != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Semantics(liveRegion: true, child: Text(status!)),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class RegistrationScreen extends StatefulWidget {

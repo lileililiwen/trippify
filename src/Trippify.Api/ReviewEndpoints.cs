@@ -41,6 +41,7 @@ public static class ReviewEndpoints
         var review = new GuideReview { Id = Guid.NewGuid(), GuideId = guideId, UserId = user, Rating = request.Rating, Body = request.Body.Trim(), CreatedAt = now, UpdatedAt = now };
         db.GuideReviews.Add(review); await db.SaveChangesAsync();
         ReviewCommands.Add(1, new KeyValuePair<string, object?>("operation", "review-submitted"));
+        await NotificationFanOut.QueueReviewSubmittedAsync(db, review, guide, clock);
         return Results.Created($"/api/v1/guides/{guideId}/reviews", new ReviewResponse(review.Id, review.GuideId, review.UserId, review.Rating, review.Body, review.ModerationStatus.ToString(), review.CreatedAt, review.UpdatedAt, null));
     }
 

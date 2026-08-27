@@ -260,6 +260,44 @@ class FakeApi implements AppApi {
   @override
   Future<AdminCreatorsResponse> listAdminCreators({int? limit}) async =>
       const AdminCreatorsResponse(0, []);
+  @override
+  Future<FollowStatus> getCreatorFollowStatus(String slug) async =>
+      FollowStatus(slug, false, null);
+  @override
+  Future<FollowStatus> followCreator(String slug) async =>
+      FollowStatus(slug, true, DateTime(2026, 1, 1));
+  @override
+  Future<void> unfollowCreator(String slug) async {}
+  @override
+  Future<int> getCreatorFollowersCount(String slug) async => 0;
+  @override
+  Future<NotificationList> listNotifications({int? limit}) async =>
+      const NotificationList(0, []);
+  @override
+  Future<void> markNotificationRead(String id) async {}
+  @override
+  Future<NotificationPreferences> getNotificationPreferences() async =>
+      _defaultPrefs();
+  @override
+  Future<NotificationPreferences> updateNotificationPreferences(
+    NotificationPreferences preferences,
+  ) async =>
+      preferences;
+
+  static NotificationPreferences _defaultPrefs() => NotificationPreferences(
+        emailEnabled: true,
+        inAppEnabled: true,
+        newGuidePublishedEmail: true,
+        newGuidePublishedInApp: true,
+        newReviewOnMyGuideEmail: true,
+        newReviewOnMyGuideInApp: true,
+        newReplyToReviewEmail: true,
+        newReplyToReviewInApp: true,
+        followerGainedEmail: true,
+        followerGainedInApp: true,
+        evidenceReviewedEmail: true,
+        evidenceReviewedInApp: true,
+      );
 
   @override
   Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
@@ -773,5 +811,31 @@ void main() {
     expect(find.text('Audit log'), findsOneWidget);
     expect(find.text('Users'), findsOneWidget);
     expect(find.text('Creators'), findsOneWidget);
+  });
+  testWidgets('notifications screen renders empty state', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Notifications'));
+    await tester.pumpAndSettle();
+    expect(find.text('No notifications yet.'), findsOneWidget);
+  });
+  testWidgets('notification preferences screen renders toggles', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Notification preferences'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SwitchListTile), findsWidgets);
   });
 }
