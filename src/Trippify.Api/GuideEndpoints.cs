@@ -106,7 +106,7 @@ public static class GuideEndpoints
         var guide = await OwnedGuide(guideId, principal, db).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound(); if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken); guide.DeletedAt = clock.UtcNow; guide.UpdatedAt = clock.UtcNow; guide.ConcurrencyToken = Guid.NewGuid(); db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "deleted", guide.UpdatedAt)); await db.SaveChangesAsync(); return Results.NoContent();
     }
 
-    private static async Task<IResult> Publish(Guid guideId, PublishRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> Publish(Guid guideId, PublishRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, BackgroundJobProcessor processor)
     {
         var guide = await OwnedGuide(guideId, principal, db).Include(x => x.Days).ThenInclude(x => x.Nodes).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound();
         if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken);
@@ -118,7 +118,7 @@ public static class GuideEndpoints
         guide.PublishedAt = now; Touch(guide, now);
         db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "published:" + guide.Lifecycle, now));
         await db.SaveChangesAsync();
-        await VersioningEndpoints.CreateInitialReleaseAsync(db, guide, guide.OwnerUserId, clock);
+        await VersioningEndpoints.CreateInitialReleaseAsync(db, guide, guide.OwnerUserId, clock, processor);
         GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "publish"));
         return Results.Ok(new { guide.ConcurrencyToken, guide.Slug, lifecycle = guide.Lifecycle.ToString() });
     }

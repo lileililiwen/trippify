@@ -9,6 +9,7 @@ namespace Trippify.Infrastructure;
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<RevokedAccessToken> RevokedAccessTokens => Set<RevokedAccessToken>();
@@ -92,7 +93,7 @@ public sealed class CreatorProfile { public Guid UserId { get; init; } public re
 public sealed class RevokedAccessToken { public required string TokenHash { get; init; } public DateTimeOffset ExpiresAt { get; init; } }
 public sealed class IdentityAuditEntry { public Guid Id { get; init; } public Guid ActorUserId { get; init; } public Guid TargetUserId { get; init; } public required string Action { get; init; } public required string Reason { get; init; } public DateTimeOffset OccurredAt { get; init; } }
 public sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }
-public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider, IPaymentGateway, IAiAssistant, IBackgroundJobQueue
+public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider, IPaymentGateway, IAiAssistant
 {
     private readonly IEmailSender? _resend;
 
@@ -116,5 +117,4 @@ public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider,
     public Task<string?> GeocodeAsync(string address, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellationToken) => throw new NotSupportedException("Payments are disabled in local mode.");
     public Task<string> AssistAsync(string input, CancellationToken cancellationToken) => Task.FromResult(input);
-    public ValueTask EnqueueAsync(string jobName, string payload, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 }

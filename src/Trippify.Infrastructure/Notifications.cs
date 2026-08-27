@@ -33,6 +33,7 @@ public sealed class NotificationPreference
 public sealed class Notification
 {
     public Guid Id { get; init; }
+    public Guid? SourceJobId { get; init; }
     public Guid UserId { get; init; }
     public NotificationKind Kind { get; init; }
     public string Title { get; init; } = string.Empty;
@@ -75,6 +76,7 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<Notific
         e.Property(x => x.TargetSlug).HasMaxLength(200);
         e.HasIndex(x => new { x.UserId, x.CreatedAt });
         e.HasIndex(x => new { x.UserId, x.ReadAt });
+        e.HasIndex(x => x.SourceJobId).IsUnique();
         e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

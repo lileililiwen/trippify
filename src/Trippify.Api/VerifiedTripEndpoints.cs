@@ -55,6 +55,12 @@ public static class VerifiedTripEndpoints
             RetentionDeadline = now.Add(RetentionPeriod),
         };
         db.TripEvidence.Add(evidence);
+        db.BackgroundJobs.Add(new BackgroundJob
+        {
+            Id = Guid.NewGuid(), Type = BackgroundJobTypes.EvidenceRetention,
+            Payload = System.Text.Json.JsonSerializer.Serialize(new EvidenceRetentionPayload(evidence.Id)),
+            IdempotencyKey = $"evidence-retention:{evidence.Id}", AvailableAt = evidence.RetentionDeadline, CreatedAt = now,
+        });
         await db.SaveChangesAsync();
         VerifiedCommands.Add(1, new KeyValuePair<string, object?>("operation", "evidence-submitted"));
         return EvidenceCreatedResult(evidence);

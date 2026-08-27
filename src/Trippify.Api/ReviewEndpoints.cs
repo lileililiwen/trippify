@@ -26,7 +26,7 @@ public static class ReviewEndpoints
         adminGroup.MapPut("/reviews/{reviewId:guid}/moderate", ModerateReview);
     }
 
-    private static async Task<IResult> SubmitReview(Guid guideId, SubmitReviewRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> SubmitReview(Guid guideId, SubmitReviewRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, BackgroundJobProcessor processor)
     {
         var user = IdentityEndpoints.CurrentUserId(principal);
         var guide = await db.TravelGuides.AsNoTracking().SingleOrDefaultAsync(x => x.Id == guideId && (x.Lifecycle == GuideLifecycle.FreePublic || x.Lifecycle == GuideLifecycle.Paid));
@@ -39,9 +39,9 @@ public static class ReviewEndpoints
         var errors = ValidateReview(request); if (errors.Count > 0) return Results.ValidationProblem(errors);
         var now = clock.UtcNow;
         var review = new GuideReview { Id = Guid.NewGuid(), GuideId = guideId, UserId = user, Rating = request.Rating, Body = request.Body.Trim(), CreatedAt = now, UpdatedAt = now };
-        db.GuideReviews.Add(review); await db.SaveChangesAsync();
+        db.GuideReviews.Add(review);
         ReviewCommands.Add(1, new KeyValuePair<string, object?>("operation", "review-submitted"));
-        await NotificationFanOut.QueueReviewSubmittedAsync(db, review, guide, clock);
+        await NotificationFanOut.QueueReviewSubmittedAsync(db, review, guide, clock, processor);
         return Results.Created($"/api/v1/guides/{guideId}/reviews", new ReviewResponse(review.Id, review.GuideId, review.UserId, review.Rating, review.Body, review.ModerationStatus.ToString(), review.CreatedAt, review.UpdatedAt, null));
     }
 

@@ -130,3 +130,4 @@ Managed SaaS hosting (tenants, subscriptions, quotas, export/deletion) is docume
 Assisted imports, draft review, and linked translations are documented in [`docs/assisted-import.md`](docs/assisted-import.md).
 Commercial remix revenue (license policies, ancestry, approval, multi-party shares) is documented in [`docs/commercial-remixes.md`](docs/commercial-remixes.md).
 Self-hosted distribution (containers, migrations, bootstrap, backup/restore, feature flags) is documented in [`docs/self-hosted.md`](docs/self-hosted.md).
+Durable background-job leases, retries, handlers, deployment, and diagnostics are documented in [`docs/background-jobs.md`](docs/background-jobs.md).

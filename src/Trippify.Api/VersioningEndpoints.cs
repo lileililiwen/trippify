@@ -22,7 +22,7 @@ public static class VersioningEndpoints
         publicGroup.MapGet("/releases/{releaseId:guid}", GetRelease);
     }
 
-    public static async Task<Guid> CreateInitialReleaseAsync(AppDbContext db, TravelGuide guide, Guid publisherUserId, IClock clock)
+    public static async Task<Guid> CreateInitialReleaseAsync(AppDbContext db, TravelGuide guide, Guid publisherUserId, IClock clock, BackgroundJobProcessor processor)
     {
         var version = 1;
         var release = new GuideRelease
@@ -37,12 +37,11 @@ public static class VersioningEndpoints
             NodeSummary = BuildNodeSummary(guide),
         };
         db.GuideReleases.Add(release);
-        await db.SaveChangesAsync();
-        await NotificationFanOut.QueueGuideUpdatedAsync(db, guide, release, clock);
+        await NotificationFanOut.QueueGuideUpdatedAsync(db, guide, release, clock, processor);
         return release.Id;
     }
 
-    private static async Task<IResult> PublishRelease(Guid guideId, PublishReleaseRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> PublishRelease(Guid guideId, PublishReleaseRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, BackgroundJobProcessor processor)
     {
         var publisher = IdentityEndpoints.CurrentUserId(principal);
         var guide = await db.TravelGuides.AsNoTracking().Include(x => x.Days).ThenInclude(x => x.Nodes).SingleOrDefaultAsync(x => x.Id == guideId);
@@ -68,8 +67,7 @@ public static class VersioningEndpoints
             NodeSummary = BuildNodeSummary(guide),
         };
         db.GuideReleases.Add(release);
-        await db.SaveChangesAsync();
-        await NotificationFanOut.QueueGuideUpdatedAsync(db, guide, release, clock);
+        await NotificationFanOut.QueueGuideUpdatedAsync(db, guide, release, clock, processor);
         VersioningCommands.Add(1, new KeyValuePair<string, object?>("operation", "release-published"));
         return Results.Created($"/api/v1/releases/{release.Id}", ToResponse(release));
     }

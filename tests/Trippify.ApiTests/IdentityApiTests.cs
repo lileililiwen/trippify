@@ -25,6 +25,7 @@ public sealed class TrippifyFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["DemoSeed:Enabled"] = "false",
+            ["BackgroundJobs:WorkersEnabled"] = "false",
         }));
         builder.ConfigureServices(services =>
         {
