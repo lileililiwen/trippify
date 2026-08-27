@@ -33,6 +33,7 @@ app.MapCommerce();
 app.MapLibrary();
 app.MapReview();
 app.MapVerifiedTrips();
+app.MapOperations();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
 app.Run();

@@ -35,6 +35,8 @@ class TrippifyApp extends StatelessWidget {
       '/planning': (_) => PlanningScreen(api: api),
       '/discover': (_) => DiscoveryScreen(api: api),
       '/library': (_) => LibraryScreen(api: api),
+      '/creator/dashboard': (_) => CreatorDashboardScreen(api: api),
+      '/admin/operations': (_) => AdminOperationsScreen(api: api),
     },
   );
 }
@@ -58,72 +60,93 @@ class _SystemScreenState extends State<SystemScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Trippify')),
-    body: Center(
-      child: FutureBuilder<SystemInfo>(
-        future: _result,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const CircularProgressIndicator();
-          }
-          if (snapshot.hasError) {
+body: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: FutureBuilder<SystemInfo>(
+          future: _result,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const CircularProgressIndicator();
+            }
+            if (snapshot.hasError) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Unable to reach the service'),
+                  FilledButton(onPressed: _retry, child: const Text('Retry')),
+                ],
+              );
+            }
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Unable to reach the service'),
-                FilledButton(onPressed: _retry, child: const Text('Retry')),
+                Semantics(
+                  label: 'API version',
+                  child: Text(
+                    '${snapshot.data!.name} ${snapshot.data!.apiVersion}',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.pushNamed(context, '/sign-in'),
+                  child: const Text('Sign in'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/register'),
+                  child: const Text('Create account'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/profile'),
+                  child: const Text('My profile'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/creator'),
+                  child: const Text('Find a creator'),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/creator/enroll'),
+                  child: const Text('Become a creator'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/guides'),
+                  child: const Text('My guides'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/planning'),
+                  child: const Text('Plan routes & budget'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/discover'),
+                  child: const Text('Discover guides'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/library'),
+                  child: const Text('My library'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => CreatorDashboardScreen(api: widget.api),
+                    ),
+                  ),
+                  child: const Text('Creator dashboard'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => AdminOperationsScreen(api: widget.api),
+                    ),
+                  ),
+                  child: const Text('Admin operations'),
+                ),
               ],
             );
-          }
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Semantics(
-                label: 'API version',
-                child: Text(
-                  '${snapshot.data!.name} ${snapshot.data!.apiVersion}',
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => Navigator.pushNamed(context, '/sign-in'),
-                child: const Text('Sign in'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/register'),
-                child: const Text('Create account'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/profile'),
-                child: const Text('My profile'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/creator'),
-                child: const Text('Find a creator'),
-              ),
-              TextButton(
-                onPressed: () =>
-                    Navigator.pushNamed(context, '/creator/enroll'),
-                child: const Text('Become a creator'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/guides'),
-                child: const Text('My guides'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/planning'),
-                child: const Text('Plan routes & budget'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/discover'),
-                child: const Text('Discover guides'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/library'),
-                child: const Text('My library'),
-              ),
-            ],
-          );
-        },
+          },
+        ),
       ),
     ),
   );
@@ -762,6 +785,319 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class CreatorDashboardScreen extends StatefulWidget {
+  const CreatorDashboardScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<CreatorDashboardScreen> createState() => _CreatorDashboardScreenState();
+}
+
+class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
+  late Future<CreatorDashboardOverview> overview;
+  late Future<CreatorOrdersResponse> orders;
+  late Future<CreatorReviewSummary> reviews;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    setState(() {
+      overview = widget.api.getCreatorDashboardOverview();
+      orders = widget.api.listCreatorOrders();
+      reviews = widget.api.getCreatorDashboardReviews();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Creator dashboard')),
+      body: RefreshIndicator(
+        onRefresh: () async => _refresh(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('Overview', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<CreatorDashboardOverview>(
+              future: overview,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Creator dashboard is unavailable.'),
+                  );
+                }
+                final value = snapshot.data!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Semantics(
+                      label: 'Guides summary',
+                      child: Text(
+                        'Guides ${value.guideCount} (active ${value.activeGuideCount})',
+                      ),
+                    ),
+                    Semantics(
+                      label: 'Orders summary',
+                      child: Text(
+                        'Paid orders ${value.paidOrderCount} · Refunded ${value.refundedOrderCount}',
+                      ),
+                    ),
+                    if (value.revenue.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No revenue yet.'),
+                      )
+                    else
+                      for (final entry in value.revenue)
+                        ListTile(
+                          title: Text(entry.currencyCode),
+                          subtitle: Text(
+                            'Gross ${entry.grossMinorUnits} · '
+                            'Net ${entry.netMinorUnits}',
+                          ),
+                          trailing: Text(
+                            'Paid ${entry.paidOrderCount} · '
+                            'Refunded ${entry.refundedOrderCount}',
+                          ),
+                        ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Reviews', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<CreatorReviewSummary>(
+              future: reviews,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Review summary unavailable.'),
+                  );
+                }
+                final summary = snapshot.data!;
+                return Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Semantics(
+                    label: 'Review moderation summary',
+                    child: Text(
+                      'Visible ${summary.visibleCount} · '
+                      'Flagged ${summary.flaggedCount} · '
+                      'Hidden ${summary.hiddenCount} · '
+                      'Open reports ${summary.reportsOpen}',
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Recent orders', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<CreatorOrdersResponse>(
+              future: orders,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Order list is unavailable.'),
+                  );
+                }
+                final data = snapshot.data!;
+                if (data.items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No orders yet.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final order in data.items)
+                      ListTile(
+                        title: Text(order.guideTitle),
+                        subtitle: Text('${order.status} · ${order.currencyCode}'),
+                        trailing: Text('${order.amountMinorUnits}'),
+                      ),
+                  ],
+                );
+              },
+            ),
+            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AdminOperationsScreen extends StatefulWidget {
+  const AdminOperationsScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<AdminOperationsScreen> createState() => _AdminOperationsScreenState();
+}
+
+class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
+  late Future<AdminAuditResponse> audit;
+  late Future<AdminUsersResponse> users;
+  late Future<AdminCreatorsResponse> creators;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    setState(() {
+      audit = widget.api.listAdminAudit(limit: 50);
+      users = widget.api.listAdminUsers(limit: 50);
+      creators = widget.api.listAdminCreators(limit: 50);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin operations')),
+      body: RefreshIndicator(
+        onRefresh: () async => _refresh(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('Audit log', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<AdminAuditResponse>(
+              future: audit,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Audit log unavailable.'),
+                  );
+                }
+                final entries = snapshot.data!.items;
+                if (entries.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No audit entries yet.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final entry in entries)
+                      ListTile(
+                        title: Text(entry.action),
+                        subtitle: Text(entry.reason),
+                        trailing: Text(entry.targetUserId.substring(0, 8)),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Users', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<AdminUsersResponse>(
+              future: users,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Users list unavailable.'),
+                  );
+                }
+                final entries = snapshot.data!.items;
+                if (entries.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No users found.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final u in entries)
+                      ListTile(
+                        title: Text(u.email),
+                        subtitle: Text('${u.status} · confirmed ${u.emailConfirmed}'),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Creators', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<AdminCreatorsResponse>(
+              future: creators,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Creators list unavailable.'),
+                  );
+                }
+                final entries = snapshot.data!.items;
+                if (entries.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No creators yet.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final c in entries)
+                      ListTile(
+                        title: Text(c.slug),
+                        subtitle: Text(c.status),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ReviewSection extends StatefulWidget {

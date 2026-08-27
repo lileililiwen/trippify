@@ -233,6 +233,33 @@ class FakeApi implements AppApi {
     required int totalCostMinorUnits,
     required String currencyCode,
   }) async {}
+  @override
+  Future<CreatorDashboardOverview> getCreatorDashboardOverview() async =>
+      _emptyOverview();
+
+  static CreatorDashboardOverview _emptyOverview() => CreatorDashboardOverview(
+        0,
+        0,
+        0,
+        0,
+        const [],
+        DateTime(2026, 1, 1),
+      );
+  @override
+  Future<CreatorOrdersResponse> listCreatorOrders({int? limit}) async =>
+      const CreatorOrdersResponse(0, []);
+  @override
+  Future<CreatorReviewSummary> getCreatorDashboardReviews() async =>
+      const CreatorReviewSummary(0, 0, 0, 0);
+  @override
+  Future<AdminAuditResponse> listAdminAudit({int? limit}) async =>
+      const AdminAuditResponse(0, []);
+  @override
+  Future<AdminUsersResponse> listAdminUsers({int? limit}) async =>
+      const AdminUsersResponse(0, []);
+  @override
+  Future<AdminCreatorsResponse> listAdminCreators({int? limit}) async =>
+      const AdminCreatorsResponse(0, []);
 
   @override
   Future<AuthorPage> getAuthor(String slug) async => AuthorPage(
@@ -709,5 +736,42 @@ void main() {
       isNull,
       reason: 'No exceptions expected during submit tap',
     );
+  });
+  testWidgets('creator dashboard opens with empty and revenue states', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Creator dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Creator dashboard'), findsOneWidget);
+    expect(find.text('No revenue yet.'), findsOneWidget);
+    expect(find.text('No orders yet.'), findsOneWidget);
+    expect(
+      find.textContaining('Visible 0 · Flagged 0 · Hidden 0'),
+      findsOneWidget,
+    );
+  });
+  testWidgets('admin operations screen handles forbidden states', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Admin operations'));
+    await tester.pumpAndSettle();
+    expect(find.text('Admin operations'), findsOneWidget);
+    expect(find.text('Audit log'), findsOneWidget);
+    expect(find.text('Users'), findsOneWidget);
+    expect(find.text('Creators'), findsOneWidget);
   });
 }

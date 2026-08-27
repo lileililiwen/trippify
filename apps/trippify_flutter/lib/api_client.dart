@@ -91,6 +91,12 @@ abstract interface class AppApi {
     required int totalCostMinorUnits,
     required String currencyCode,
   });
+  Future<CreatorDashboardOverview> getCreatorDashboardOverview();
+  Future<CreatorOrdersResponse> listCreatorOrders({int? limit});
+  Future<CreatorReviewSummary> getCreatorDashboardReviews();
+  Future<AdminAuditResponse> listAdminAudit({int? limit});
+  Future<AdminUsersResponse> listAdminUsers({int? limit});
+  Future<AdminCreatorsResponse> listAdminCreators({int? limit});
 }
 
 class GuideSummary {
@@ -405,6 +411,120 @@ class TripInsightSummary {
   final int submissionCount;
   final bool meetsKAnonymity;
   final InsightAggregate? median, average;
+}
+
+class RevenueByCurrency {
+  const RevenueByCurrency(
+    this.currencyCode,
+    this.grossMinorUnits,
+    this.commissionMinorUnits,
+    this.netMinorUnits,
+    this.paidOrderCount,
+    this.refundedOrderCount,
+  );
+  final String currencyCode;
+  final int grossMinorUnits, commissionMinorUnits, netMinorUnits;
+  final int paidOrderCount, refundedOrderCount;
+}
+
+class CreatorDashboardOverview {
+  const CreatorDashboardOverview(
+    this.guideCount,
+    this.activeGuideCount,
+    this.paidOrderCount,
+    this.refundedOrderCount,
+    this.revenue,
+    this.generatedAt,
+  );
+  final int guideCount, activeGuideCount, paidOrderCount, refundedOrderCount;
+  final List<RevenueByCurrency> revenue;
+  final DateTime generatedAt;
+}
+
+class CreatorOrderRow {
+  const CreatorOrderRow(
+    this.orderId,
+    this.guideId,
+    this.guideTitle,
+    this.amountMinorUnits,
+    this.currencyCode,
+    this.status,
+    this.createdAt,
+  );
+  final String orderId, guideId, guideTitle, currencyCode, status;
+  final int amountMinorUnits;
+  final DateTime createdAt;
+}
+
+class CreatorOrdersResponse {
+  const CreatorOrdersResponse(this.total, this.items);
+  final int total;
+  final List<CreatorOrderRow> items;
+}
+
+class CreatorReviewSummary {
+  const CreatorReviewSummary(
+    this.visibleCount,
+    this.flaggedCount,
+    this.hiddenCount,
+    this.reportsOpen,
+  );
+  final int visibleCount, flaggedCount, hiddenCount, reportsOpen;
+}
+
+class AdminAuditEntryRow {
+  const AdminAuditEntryRow(
+    this.id,
+    this.actorUserId,
+    this.targetUserId,
+    this.action,
+    this.reason,
+    this.occurredAt,
+  );
+  final String id, actorUserId, targetUserId, action, reason;
+  final DateTime occurredAt;
+}
+
+class AdminAuditResponse {
+  const AdminAuditResponse(this.total, this.items);
+  final int total;
+  final List<AdminAuditEntryRow> items;
+}
+
+class AdminUserRow {
+  const AdminUserRow(
+    this.userId,
+    this.email,
+    this.status,
+    this.emailConfirmed,
+    this.createdAt,
+  );
+  final String userId, email, status;
+  final bool emailConfirmed;
+  final DateTime createdAt;
+}
+
+class AdminUsersResponse {
+  const AdminUsersResponse(this.total, this.items);
+  final int total;
+  final List<AdminUserRow> items;
+}
+
+class AdminCreatorRow {
+  const AdminCreatorRow(
+    this.userId,
+    this.slug,
+    this.status,
+    this.createdAt,
+  );
+  final String userId, slug, status;
+  final DateTime createdAt;
+}
+
+class AdminCreatorsResponse {
+  const AdminCreatorsResponse(this.total, this.items);
+  final int total;
+  final List<AdminCreatorRow> items;
 }
 
 abstract interface class TokenStore {
@@ -1114,6 +1234,122 @@ class ApiClient implements AppApi {
       (value['averagePartySize'] as num).toDouble(),
       (value['averageTripDays'] as num).toDouble(),
       (value['averageTotalCostMinorUnits'] as num).toDouble(),
+    );
+  }
+
+  @override
+  Future<CreatorDashboardOverview> getCreatorDashboardOverview() async {
+    final v = await _json('GET', '/api/v1/creator/dashboard/overview', null);
+    return CreatorDashboardOverview(
+      v['guideCount'] as int,
+      v['activeGuideCount'] as int,
+      v['paidOrderCount'] as int,
+      v['refundedOrderCount'] as int,
+      ((v['revenue'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => RevenueByCurrency(
+                m['currencyCode'] as String,
+                m['grossMinorUnits'] as int,
+                m['commissionMinorUnits'] as int,
+                m['netMinorUnits'] as int,
+                m['paidOrderCount'] as int,
+                m['refundedOrderCount'] as int,
+              ))
+          .toList(),
+      DateTime.parse(v['generatedAt'] as String),
+    );
+  }
+
+  @override
+  Future<CreatorOrdersResponse> listCreatorOrders({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/creator/dashboard/orders${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return CreatorOrdersResponse(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => CreatorOrderRow(
+                m['orderId'] as String,
+                m['guideId'] as String,
+                m['guideTitle'] as String,
+                m['amountMinorUnits'] as int,
+                m['currencyCode'] as String,
+                m['status'] as String,
+                DateTime.parse(m['createdAt'] as String),
+              ))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<CreatorReviewSummary> getCreatorDashboardReviews() async {
+    final v = await _json('GET', '/api/v1/creator/dashboard/reviews', null);
+    return CreatorReviewSummary(
+      v['visibleCount'] as int,
+      v['flaggedCount'] as int,
+      v['hiddenCount'] as int,
+      v['reportsOpen'] as int,
+    );
+  }
+
+  @override
+  Future<AdminAuditResponse> listAdminAudit({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/admin/operations/audit${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return AdminAuditResponse(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => AdminAuditEntryRow(
+                m['id'] as String,
+                m['actorUserId'] as String,
+                m['targetUserId'] as String,
+                m['action'] as String,
+                m['reason'] as String,
+                DateTime.parse(m['occurredAt'] as String),
+              ))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<AdminUsersResponse> listAdminUsers({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/admin/operations/users${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return AdminUsersResponse(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => AdminUserRow(
+                m['userId'] as String,
+                m['email'] as String,
+                m['status'] as String,
+                m['emailConfirmed'] as bool,
+                DateTime.parse(m['createdAt'] as String),
+              ))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<AdminCreatorsResponse> listAdminCreators({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/admin/operations/creators${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return AdminCreatorsResponse(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => AdminCreatorRow(
+                m['userId'] as String,
+                m['slug'] as String,
+                m['status'] as String,
+                DateTime.parse(m['createdAt'] as String),
+              ))
+          .toList(),
     );
   }
 
