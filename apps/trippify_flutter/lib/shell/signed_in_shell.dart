@@ -41,6 +41,7 @@ enum SignedInDestination { home, discover, library, plan, create }
 
 class _SignedInShellState extends State<SignedInShell> {
   MySummary? _summary;
+  bool _summaryResolved = false;
 
   @override
   void initState() {
@@ -51,6 +52,7 @@ class _SignedInShellState extends State<SignedInShell> {
     final pending = widget.initialSummary;
     if (pending != null) {
       _summary = pending;
+      _summaryResolved = true;
     }
     // Skip the async re-load when an initial summary was supplied —
     // the caller has already resolved the session, and re-fetching on
@@ -61,62 +63,90 @@ class _SignedInShellState extends State<SignedInShell> {
 
   Future<void> _loadSummary() async {
     final token = widget.api.tokens.value;
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) {
+      _summaryResolved = true;
+      return;
+    }
     try {
       final s = await widget.api.getMySummary();
-      if (mounted) setState(() => _summary = s);
+      if (mounted) {
+        setState(() {
+          _summary = s;
+          _summaryResolved = true;
+        });
+      }
     } catch (_) {
       // Summary is best-effort; the home still renders the anonymous
       // shape if it can't load.
+      if (mounted) setState(() => _summaryResolved = true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_summaryResolved) {
+      return Scaffold(body: widget.child ?? const SizedBox.shrink());
+    }
+
     final isCreator = _summary?.isCreator ?? false;
-    final destinations = <NavigationDestination>[
-      const NavigationDestination(
-        icon: Icon(Icons.home_outlined),
-        selectedIcon: Icon(Icons.home),
-        label: 'Home',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.explore_outlined),
-        selectedIcon: Icon(Icons.explore),
-        label: 'Discover',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.collections_bookmark_outlined),
-        selectedIcon: Icon(Icons.collections_bookmark),
-        label: 'Library',
-      ),
-    ];
+    final destinations =
+        <({SignedInDestination destination, NavigationDestination navigation})>[
+          (
+            destination: SignedInDestination.home,
+            navigation: const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+          ),
+          (
+            destination: SignedInDestination.discover,
+            navigation: const NavigationDestination(
+              icon: Icon(Icons.explore_outlined),
+              selectedIcon: Icon(Icons.explore),
+              label: 'Discover',
+            ),
+          ),
+          (
+            destination: SignedInDestination.library,
+            navigation: const NavigationDestination(
+              icon: Icon(Icons.collections_bookmark_outlined),
+              selectedIcon: Icon(Icons.collections_bookmark),
+              label: 'Library',
+            ),
+          ),
+        ];
     if (isCreator) {
-      destinations.add(
-        const NavigationDestination(
+      destinations.add((
+        destination: SignedInDestination.create,
+        navigation: const NavigationDestination(
           icon: Icon(Icons.edit_outlined),
           selectedIcon: Icon(Icons.edit),
           label: 'Create',
         ),
-      );
+      ));
     } else {
-      destinations.add(
-        const NavigationDestination(
+      destinations.add((
+        destination: SignedInDestination.plan,
+        navigation: const NavigationDestination(
           icon: Icon(Icons.map_outlined),
           selectedIcon: Icon(Icons.map),
           label: 'Plan',
         ),
-      );
+      ));
     }
+
+    final currentIndex = destinations.indexWhere(
+      (entry) => entry.destination == widget.current,
+    );
 
     return Scaffold(
       body: widget.child ?? const SizedBox.shrink(),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: widget.current.index,
-        destinations: destinations,
+        selectedIndex: currentIndex < 0 ? 0 : currentIndex,
+        destinations: destinations.map((entry) => entry.navigation).toList(),
         onDestinationSelected: (i) {
-          final dest = SignedInDestination.values[i];
-          widget.onNavigate(dest);
+          widget.onNavigate(destinations[i].destination);
         },
       ),
     );
