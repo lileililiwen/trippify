@@ -8,6 +8,15 @@
 - Logout stores only a SHA-256 token digest and rotates the Security Stamp, invalidating access and refresh credentials.
 - Forgot-password responses do not reveal whether an account exists. Reset codes are single-use Identity tokens.
 
+## Email delivery
+
+Confirmation and password-reset messages are dispatched through `Trippify.Application.IEmailSender`, which the API resolves to `LocalProviders.SendAsync` at startup.
+
+- When `RESEND_API_KEY` is set, the API uses the [Resend](https://resend.com) REST API (`https://api.resend.com/emails`) with `from = onboarding@trippify.com` and the recipient/subject/body supplied by the Identity adapter.
+- When `RESEND_API_KEY` is empty or unset, the call is a no-op (`Task.CompletedTask`). Registration and password-reset endpoints still succeed; the user simply never receives the message.
+- Any exception thrown by the email adapter is caught in the registration and forgot-password endpoints, logged to `Console`, and swallowed so that a transient SMTP outage cannot block account creation.
+- Production deployments should override `IEmailSender` with their own provider (SendGrid, AWS SES, SMTP, etc.) by replacing `LocalProviders` in `Program.cs` — no other code needs to change.
+
 ## Data exposure
 
 `/api/v1/me/profile` is authenticated and contains private email and account state. `/api/v1/creators/{slug}` is anonymous but returns only explicitly public creator fields. It never projects email, verification tokens, status history, roles, or audit data.

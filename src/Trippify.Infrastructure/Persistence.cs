@@ -94,12 +94,15 @@ public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider,
 {
     private readonly IEmailSender? _resend;
 
-    public LocalProviders(IConfiguration configuration)
+    public LocalProviders(IConfiguration configuration) : this(configuration, new HttpClient()) { }
+
+    public LocalProviders(IConfiguration configuration, HttpClient resendHttpClient)
     {
         var resendKey = configuration["RESEND_API_KEY"];
         if (!string.IsNullOrEmpty(resendKey))
         {
-            _resend = new ResendEmailSender(resendKey);
+            resendHttpClient.BaseAddress ??= new Uri("https://api.resend.com");
+            _resend = new ResendEmailSender(resendKey, resendHttpClient);
         }
     }
 

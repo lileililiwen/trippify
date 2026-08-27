@@ -10,13 +10,13 @@ namespace Trippify.Infrastructure;
 public sealed class ResendEmailSender : IEmailSender
 {
     private readonly HttpClient _httpClient;
-    private readonly string _apiKey;
     private const string FromEmail = "onboarding@trippify.com";
 
-    public ResendEmailSender(string apiKey)
+    public ResendEmailSender(string apiKey) : this(apiKey, new HttpClient()) { }
+
+    public ResendEmailSender(string apiKey, HttpClient httpClient)
     {
-        _apiKey = apiKey;
-        _httpClient = new HttpClient();
+        _httpClient = httpClient;
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }

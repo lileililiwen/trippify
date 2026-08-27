@@ -20,6 +20,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Postgres: "Host=postgres;Database=trippify;Username=trippify;Password=trippify_dev"
       SelfHosted__RunMigrationsOnStartup: "true"
+      # Set RESEND_API_KEY to a real Resend API key to deliver confirmation
+      # and password-reset emails. Leave unset to use the in-process stub
+      # (registration succeeds, emails are silently dropped).
+      # RESEND_API_KEY: "re_..."
     depends_on:
       postgres:
         condition: service_healthy

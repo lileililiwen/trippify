@@ -9,6 +9,7 @@ Structured travel-guide marketplace using ASP.NET Core 8, PostgreSQL/PostGIS, an
 - Flutter SDK 3.13+ with Dart 3
 - `dotnet-ef` CLI (`dotnet tool install dotnet-ef -g`)
 - Optional: Docker (recommended for spinning up the database locally)
+- Optional: a [Resend](https://resend.com) API key (`RESEND_API_KEY`) for real email delivery. When unset, the API uses an in-process stub and confirmation/reset emails are silently dropped.
 
 ## Repository layout
 
@@ -75,6 +76,8 @@ flutter test
 ## Deployment notes
 
 Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, and any other provider secrets through your secret store. Never commit secrets.
+
+To deliver real confirmation and password-reset emails, set `RESEND_API_KEY` (see [`docs/identity.md`](docs/identity.md) for the full contract). Without the key, the API silently no-ops email sends — registration still succeeds, but the user never receives the message.
 
 > If you see `System.InvalidOperationException: Required production database configuration is missing.` at startup, the API is running in `Production` (or `Staging`) without a `ConnectionStrings:Postgres` value. Either unset `ASPNETCORE_ENVIRONMENT` (run as `Development` locally) or provide the connection string:
 >
