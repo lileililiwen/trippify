@@ -27,3 +27,4 @@ Integration plugin system (manifests, signatures, scope, lifecycle, audit) is do
 Managed SaaS hosting (tenants, subscriptions, quotas, export/deletion) is documented in [`docs/managed-saas.md`](docs/managed-saas.md).
 Assisted imports, draft review, and linked translations are documented in [`docs/assisted-import.md`](docs/assisted-import.md).
 Commercial remix revenue (license policies, ancestry, approval, multi-party shares) is documented in [`docs/commercial-remixes.md`](docs/commercial-remixes.md).
+Self-hosted distribution (containers, migrations, bootstrap, backup/restore, feature flags) is documented in [`docs/self-hosted.md`](docs/self-hosted.md).

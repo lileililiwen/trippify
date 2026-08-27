@@ -57,6 +57,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<RemixAncestry> RemixAncestries => Set<RemixAncestry>();
     public DbSet<RemixApproval> RemixApprovals => Set<RemixApproval>();
     public DbSet<RevenueShare> RevenueShares => Set<RevenueShare>();
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
+    public DbSet<BackupSnapshot> BackupSnapshots => Set<BackupSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

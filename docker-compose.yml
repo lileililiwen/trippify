@@ -11,3 +11,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Trippify.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: "Host=postgres;Database=trippify;Username=trippify;Password=trippify_dev"
+      SelfHosted__RunMigrationsOnStartup: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["8080:8080"]

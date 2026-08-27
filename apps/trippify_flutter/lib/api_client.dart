@@ -10,7 +10,6 @@ class SystemInfo {
 }
 
 abstract interface class AppApi {
-  Future<SystemInfo> getSystemInfo();
   Future<void> register(String email, String password);
   Future<void> login(String email, String password);
   Future<PrivateProfile> getProfile();
@@ -149,6 +148,13 @@ abstract interface class AppApi {
     required String decision,
     String? reason,
   });
+  Future<SystemDistributionInfo> getSystemInfo();
+  Future<SystemStatus> getSystemStatus();
+  Future<void> triggerSystemUpgrade();
+  Future<BackupSnapshot> triggerSystemBackup({String? label});
+  Future<void> triggerSystemRestore(String payload);
+  Future<List<FeatureFlag>> listFeatureFlags();
+  Future<FeatureFlag> upsertFeatureFlag({required String key, required bool enabled, required String value});
 }
 
 class GuideSummary {
@@ -857,6 +863,45 @@ class RemixAncestry {
   final DateTime? decidedAt;
 }
 
+class SystemDistributionInfo {
+  const SystemDistributionInfo(this.version, this.migrationsRegistered);
+  final String version;
+  final int migrationsRegistered;
+}
+
+class SystemStatus {
+  const SystemStatus(
+    this.version,
+    this.appliedCount,
+    this.pendingCount,
+    this.applied,
+    this.pending,
+  );
+  final String version;
+  final int appliedCount, pendingCount;
+  final List<String> applied, pending;
+}
+
+class BackupSnapshot {
+  const BackupSnapshot(this.id, this.label, this.payloadLength, this.createdAt);
+  final String id, label;
+  final int payloadLength;
+  final DateTime createdAt;
+}
+
+class FeatureFlag {
+  FeatureFlag({
+    required this.key,
+    required this.enabled,
+    required this.value,
+    required this.updatedAt,
+  });
+  final String key;
+  bool enabled;
+  String value;
+  DateTime updatedAt;
+}
+
 abstract interface class TokenStore {
   Future<String?> read();
   Future<void> write(String? token);
@@ -891,17 +936,6 @@ class ApiClient implements AppApi {
   final Uri baseUri;
   final http.Client _client;
   final TokenStore _tokens;
-  @override
-  Future<SystemInfo> getSystemInfo() async {
-    final token = await _tokens.read();
-    final response = await _client.get(
-      baseUri.resolve('/api/v1/system'),
-      headers: {if (token != null) 'Authorization': 'Bearer $token'},
-    );
-    if (response.statusCode != 200) throw StateError('API unavailable');
-    final value = jsonDecode(response.body) as Map<String, dynamic>;
-    return SystemInfo(value['name'] as String, value['apiVersion'] as String);
-  }
 
   @override
   Future<void> register(String email, String password) => _json(
@@ -2175,6 +2209,72 @@ class ApiClient implements AppApi {
         v['decision'] as String,
         DateTime.parse(v['createdAt'] as String),
         _parseNullableDate(v['decidedAt']),
+      );
+
+  @override
+  Future<SystemDistributionInfo> getSystemInfo() async {
+    final v = await _json('GET', '/api/v1/system/info', null);
+    return SystemDistributionInfo(v['version'] as String, v['migrationsRegistered'] as int);
+  }
+
+  @override
+  Future<SystemStatus> getSystemStatus() async {
+    final v = await _json('GET', '/api/v1/admin/system/status', null);
+    return SystemStatus(
+      v['version'] as String,
+      v['appliedCount'] as int,
+      v['pendingCount'] as int,
+      ((v['applied'] as List?) ?? const []).cast<String>(),
+      ((v['pending'] as List?) ?? const []).cast<String>(),
+    );
+  }
+
+  @override
+  Future<void> triggerSystemUpgrade() =>
+      _json('POST', '/api/v1/admin/system/upgrade', null);
+
+  @override
+  Future<BackupSnapshot> triggerSystemBackup({String? label}) async {
+    final v = await _json('POST', '/api/v1/admin/system/backup', {'label': label ?? ''});
+    return BackupSnapshot(
+      v['id'] as String,
+      v['label'] as String,
+      v['payloadLength'] as int,
+      DateTime.parse(v['createdAt'] as String),
+    );
+  }
+
+  @override
+  Future<void> triggerSystemRestore(String payload) =>
+      _json('POST', '/api/v1/admin/system/restore', {'payload': payload});
+
+  @override
+  Future<List<FeatureFlag>> listFeatureFlags() async {
+    final v = await _json('GET', '/api/v1/admin/feature-flags', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map(_toFeatureFlag)
+        .toList();
+  }
+
+  @override
+  Future<FeatureFlag> upsertFeatureFlag({
+    required String key,
+    required bool enabled,
+    required String value,
+  }) async {
+    final v = await _json('PUT', '/api/v1/admin/feature-flags/$key', {
+      'enabled': enabled,
+      'value': value,
+    });
+    return _toFeatureFlag(v);
+  }
+
+  static FeatureFlag _toFeatureFlag(Map<String, dynamic> v) => FeatureFlag(
+        key: v['key'] as String,
+        enabled: v['enabled'] as bool,
+        value: v['value'] as String,
+        updatedAt: DateTime.parse(v['updatedAt'] as String),
       );
 
   Future<Map<String, dynamic>> _json(

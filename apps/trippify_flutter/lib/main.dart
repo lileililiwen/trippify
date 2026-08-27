@@ -43,6 +43,7 @@ class TrippifyApp extends StatelessWidget {
       '/tenant': (_) => TenantDashboardScreen(api: api),
       '/assisted-import': (_) => AssistedImportScreen(api: api),
       '/license-panel': (_) => LicensePanelScreen(api: api),
+      '/system': (_) => SystemStatusScreen(api: api),
     },
   );
 }
@@ -55,7 +56,7 @@ class SystemScreen extends StatefulWidget {
 }
 
 class _SystemScreenState extends State<SystemScreen> {
-  late Future<SystemInfo> _result;
+  late Future<SystemDistributionInfo> _result;
   @override
   void initState() {
     super.initState();
@@ -69,7 +70,7 @@ class _SystemScreenState extends State<SystemScreen> {
 body: Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: FutureBuilder<SystemInfo>(
+        child: FutureBuilder<SystemDistributionInfo>(
           future: _result,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
@@ -90,7 +91,7 @@ body: Center(
                 Semantics(
                   label: 'API version',
                   child: Text(
-                    '${snapshot.data!.name} ${snapshot.data!.apiVersion}',
+                    '${snapshot.data!.version}',
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -202,6 +203,15 @@ TextButton(
               ),
             ),
             child: const Text('License policies'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => SystemStatusScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Self-hosted status'),
           ),
               ],
             );
@@ -948,6 +958,119 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class SystemStatusScreen extends StatefulWidget {
+  const SystemStatusScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<SystemStatusScreen> createState() => _SystemStatusScreenState();
+}
+
+class _SystemStatusScreenState extends State<SystemStatusScreen> {
+  SystemDistributionInfo? info;
+  SystemStatus? status;
+  List<FeatureFlag> flags = const [];
+  String? statusMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final publicInfo = await widget.api.getSystemInfo();
+      SystemStatus adminStatus = SystemStatus(publicInfo.version, 0, 0, const [], const []);
+      List<FeatureFlag> adminFlags = const <FeatureFlag>[];
+      try {
+        adminStatus = await widget.api.getSystemStatus();
+        adminFlags = await widget.api.listFeatureFlags();
+      } catch (_) {
+        // anonymous caller or limited role; keep fallback values
+      }
+      if (mounted) {
+        setState(() {
+          info = publicInfo;
+          status = adminStatus;
+          flags = adminFlags;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => statusMessage = 'System status unavailable.');
+    }
+  }
+
+  Future<void> _upgrade() async {
+    try {
+      await widget.api.triggerSystemUpgrade();
+      _load();
+    } catch (_) {
+      if (mounted) setState(() => statusMessage = 'Cannot trigger upgrade.');
+    }
+  }
+
+  Future<void> _backup() async {
+    try {
+      final snap = await widget.api.triggerSystemBackup(label: 'manual');
+      if (mounted) setState(() => statusMessage = 'Backup ${snap.label} captured.');
+    } catch (_) {
+      if (mounted) setState(() => statusMessage = 'Cannot create backup.');
+    }
+  }
+
+  Future<void> _toggle(FeatureFlag flag) async {
+    try {
+      await widget.api.upsertFeatureFlag(key: flag.key, enabled: !flag.enabled, value: flag.value);
+      _load();
+    } catch (_) {
+      if (mounted) setState(() => statusMessage = 'Cannot update flag.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Self-hosted status')),
+      body: RefreshIndicator(
+        onRefresh: () async => _load(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('Version', style: Theme.of(context).textTheme.titleMedium),
+            Text(info?.version ?? 'Unknown'),
+            const SizedBox(height: 16),
+            Text('Migrations', style: Theme.of(context).textTheme.titleMedium),
+            Text('Applied ${status?.appliedCount ?? 0} · Pending ${status?.pendingCount ?? 0}'),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: _upgrade, child: const Text('Run upgrade')),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: _backup, child: const Text('Capture backup')),
+            const SizedBox(height: 16),
+            Text('Feature flags', style: Theme.of(context).textTheme.titleMedium),
+            if (flags.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('No feature flags defined.'),
+              )
+            else
+              for (final f in flags)
+                ListTile(
+                  title: Text(f.key),
+                  subtitle: Text('Enabled ${f.enabled}'),
+                  trailing: Switch(
+                    value: f.enabled,
+                    onChanged: (_) => _toggle(f),
+                  ),
+                ),
+            if (statusMessage != null)
+              Semantics(liveRegion: true, child: Text(statusMessage!)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class LicensePanelScreen extends StatefulWidget {

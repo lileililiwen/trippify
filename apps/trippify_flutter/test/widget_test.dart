@@ -15,7 +15,7 @@ class FakeApi implements AppApi {
     this.favorites = const [],
     this.trips = const [],
   });
-  final Future<SystemInfo> result;
+  final Future<SystemDistributionInfo> result;
   final Object? error;
   final Object? routeError;
   final List<GuideSummary> guides;
@@ -24,11 +24,6 @@ class FakeApi implements AppApi {
   final List<Entitlement> entitlements;
   final List<Favorite> favorites;
   final List<Trip> trips;
-  @override
-  Future<SystemInfo> getSystemInfo() async {
-    if (error != null) throw error!;
-    return result;
-  }
 
   @override
   Future<void> register(String email, String password) async {}
@@ -396,6 +391,25 @@ class FakeApi implements AppApi {
     String? reason,
   }) async =>
       RemixAncestry(ancestryId, 'child', 'parent', 'policy', '{}', decision, DateTime(2026, 1, 1), DateTime(2026, 1, 1));
+  @override
+  Future<SystemDistributionInfo> getSystemInfo() async {
+    if (error != null) throw error!;
+    return result;
+  }
+  @override
+  Future<SystemStatus> getSystemStatus() async => const SystemStatus('1.0.0', 0, 0, [], []);
+  @override
+  Future<void> triggerSystemUpgrade() async {}
+  @override
+  Future<BackupSnapshot> triggerSystemBackup({String? label}) async =>
+      BackupSnapshot('s1', label ?? 'manual', 12, DateTime(2026, 1, 1));
+  @override
+  Future<void> triggerSystemRestore(String payload) async {}
+  @override
+  Future<List<FeatureFlag>> listFeatureFlags() async => const [];
+  @override
+  Future<FeatureFlag> upsertFeatureFlag({required String key, required bool enabled, required String value}) async =>
+      FeatureFlag(key: key, enabled: enabled, value: value, updatedAt: DateTime(2026, 1, 1));
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -426,17 +440,17 @@ void main() {
   testWidgets('shows API result', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Trippify v1'), findsOneWidget);
+    expect(find.text('1.0.0'), findsOneWidget);
   });
   testWidgets('shows retry state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('', '')),
+          Future.value(const SystemDistributionInfo('', 0)),
           error: StateError('offline'),
         ),
       ),
@@ -450,7 +464,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -463,7 +477,7 @@ void main() {
   testWidgets('profile shows private account state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -475,7 +489,7 @@ void main() {
   testWidgets('registration validates input', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -491,7 +505,7 @@ void main() {
   testWidgets('public creator search renders public fields', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -509,7 +523,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -537,7 +551,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           guides: [
             const GuideSummary('1', 'Kansai', 'JP', 2, 'Draft', 'token'),
           ],
@@ -563,7 +577,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           guides: [
             const GuideSummary('1', 'Kansai', 'JP', 2, 'Draft', 'token'),
           ],
@@ -584,7 +598,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -598,7 +612,7 @@ void main() {
   testWidgets('discovery shows an accessible empty state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -627,7 +641,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const ['food'], [paid]),
         ),
       ),
@@ -651,7 +665,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           routeError: StateError('offline'),
         ),
       ),
@@ -679,7 +693,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
         ),
       ),
@@ -704,7 +718,7 @@ void main() {
   testWidgets('library covers empty and entitled states', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -732,7 +746,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
           unlocked: true,
         ),
@@ -775,7 +789,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
           unlocked: true,
         ),
@@ -818,7 +832,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
         ),
       ),
@@ -859,7 +873,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
           unlocked: true,
         ),
@@ -893,7 +907,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -912,7 +926,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -928,7 +942,7 @@ void main() {
   testWidgets('notifications screen renders empty state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -941,7 +955,7 @@ void main() {
   testWidgets('notification preferences screen renders toggles', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -967,7 +981,7 @@ void main() {
     await tester.pumpWidget(
       TrippifyApp(
         api: FakeApi(
-          Future.value(const SystemInfo('Trippify', 'v1')),
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
           searchResult: SearchResult(1, const [], [paid]),
           unlocked: true,
         ),
@@ -988,7 +1002,7 @@ void main() {
   testWidgets('plugin catalog screen renders empty installable and installations', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -1004,7 +1018,7 @@ void main() {
   testWidgets('tenant dashboard renders plan, quotas, and export', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -1022,7 +1036,7 @@ void main() {
   testWidgets('assisted import screen renders form and translation CTA', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -1035,10 +1049,10 @@ void main() {
     expect(find.text('Submit object import'), findsOneWidget);
     expect(find.text('Quotas'), findsOneWidget);
   });
-  testWidgets('license panel screen renders empty state and create default action', (tester) async {
+testWidgets('license panel screen renders empty state and create default action', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
-        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+        api: FakeApi(Future.value(const SystemDistributionInfo('', 0))),
       ),
     );
     await tester.pumpAndSettle();
@@ -1049,5 +1063,22 @@ void main() {
     expect(find.text('License policies'), findsOneWidget);
     expect(find.text('No license policies yet.'), findsOneWidget);
     expect(find.text('Create default license'), findsOneWidget);
+  });
+  testWidgets('self hosted status screen renders version, migrations, and feature flags', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemDistributionInfo('1.0.0', 3))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Self-hosted status'));
+    await tester.pumpAndSettle();
+    expect(find.text('Self-hosted status'), findsOneWidget);
+    expect(find.text('1.0.0'), findsOneWidget);
+    expect(find.text('No feature flags defined.'), findsOneWidget);
+    expect(find.text('Run upgrade'), findsOneWidget);
+    expect(find.text('Capture backup'), findsOneWidget);
   });
 }
