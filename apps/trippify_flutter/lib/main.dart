@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api_client.dart';
@@ -86,123 +87,223 @@ class SystemScreen extends StatefulWidget {
 }
 
 class _SystemScreenState extends State<SystemScreen> {
-  late Future<SystemDistributionInfo> _result;
+  late ValueListenable<String?> _tokens;
+  MySummary? _userSummary;
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
-    _result = widget.api.getSystemInfo();
+    _tokens = widget.api.tokens;
+    _loadUserSummary();
   }
 
-void _retry() => setState(() => _result = widget.api.getSystemInfo());
+  Future<void> _loadUserSummary() async {
+    final token = widget.api.tokens.value;
+    if (token != null && token.isNotEmpty) {
+      setState(() => _isLoading = true);
+      try {
+        final summary = await widget.api.getMySummary();
+        if (mounted) {
+          setState(() {
+            _userSummary = summary;
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _userSummary = null;
+          });
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _userSummary = null;
+        });
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tokens.addListener(_loadUserSummary);
+  }
+
+  @override
+  void dispose() {
+    _tokens.removeListener(_loadUserSummary);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('Trippify'),
       elevation: 2,
+      actions: [
+        if (_userSummary != null)
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign out',
+            onPressed: () async {
+              await widget.api.login('dummy', 'dummy');
+              if (mounted) setState(() {});
+            },
+          ),
+      ],
     ),
-    body: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
+    body: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _userSummary == null
+            ? _buildAnonymousHome()
+            : _buildAuthenticatedHome(context),
+  );
+
+  Widget _buildAnonymousHome() => Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.person_outline, size: 64, color: Colors.grey),
+        const SizedBox(height: 16),
+        const Text(
+          'Welcome to Trippify',
+          style: TextStyle(fontSize: 24, color: Colors.grey),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Please sign in to access your home screen',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: () => Navigator.pushNamed(context, '/sign-in'),
+          child: const Text('Sign in'),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: () => Navigator.pushNamed(context, '/register'),
+          child: const Text('Create account'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildAuthenticatedHome(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 32),
+        _buildHeader(),
+        const SizedBox(height: 32),
+        _buildSummaryCard(),
+        const SizedBox(height: 32),
+        _buildQuickActions(context),
+      ],
+    ),
+  );
+
+  Widget _buildHeader() => Row(
+    children: [
+      CircleAvatar(
+        backgroundColor: Color(0xFF6750A4),
+        child: Text(
+          _userSummary!.displayName.isNotEmpty
+              ? _userSummary!.displayName[0].toUpperCase()
+              : 'U',
+          style: const TextStyle(color: Colors.white, fontSize: 20),
+        ),
+        radius: 32,
+      ),
+      const SizedBox(width: 16),
+      Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 32),
-          const Text(
-            'Trippify',
-            style: TextStyle(
-              fontSize: 32,
+          Text(
+            _userSummary!.displayName,
+            style: const TextStyle(
+              fontSize: 24,
               fontWeight: FontWeight.bold,
               color: Color(0xFF6750A4),
             ),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Welcome to your trip planning assistant',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 32),
-          _buildCard(
-            context,
-            'System Status',
-            const Icon(Icons.cloud, size: 48, color: Color(0xFF6750A4)),
-            _buildSystemInfo(),
-          ),
-          const SizedBox(height: 24),
-          _buildCard(
-            context,
-            'Quick Actions',
-            const Icon(Icons.arrow_forward, size: 48, color: Colors.grey),
-            _buildQuickActions(context),
+          const SizedBox(height: 4),
+          Text(
+            _userSummary!.accountStatus,
+            style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
         ],
       ),
-    ),
+    ],
   );
 
-  Widget _buildCard(BuildContext context, String title, Icon icon, Widget content) => Card(
+  Widget _buildSummaryCard() => Card(
     margin: const EdgeInsets.only(bottom: 24),
     child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'Account Summary',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6750A4),
+            ),
+          ),
+          const SizedBox(height: 16),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              icon,
-              const SizedBox(width: 16),
+              const Text('Email:', style: TextStyle(fontSize: 14)),
               Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6750A4),
+                _userSummary!.email,
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Creator:', style: TextStyle(fontSize: 14)),
+              Text(
+                _userSummary!.isCreator ? 'Yes' : 'No',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _userSummary!.isCreator ? Color(0xFF6750A4) : Colors.grey,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          content,
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Roles:', style: TextStyle(fontSize: 14)),
+              Text(
+                _userSummary!.roles.isEmpty
+                    ? 'None'
+                    : _userSummary!.roles.join(', '),
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
         ],
       ),
     ),
-  );
-
-  Widget _buildSystemInfo() => FutureBuilder<SystemDistributionInfo>(
-    future: _result,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const CircularProgressIndicator();
-      }
-      if (snapshot.hasError) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Unable to reach the service'),
-            const SizedBox(height: 8),
-            FilledButton(onPressed: _retry, child: const Text('Retry')),
-          ],
-        );
-      }
-      final info = snapshot.data!;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Version: ${info.version}', style: const TextStyle(fontSize: 16)),
-          const SizedBox(height: 8),
-          Text('Migrations: ${info.migrationsRegistered}', style: const TextStyle(fontSize: 16, color: Colors.grey)),
-        ],
-      );
-    },
   );
 
   Widget _buildQuickActions(BuildContext context) => Wrap(
     spacing: 12,
     runSpacing: 12,
     children: [
-      _actionButton(context, '/sign-in', Icons.login, 'Sign in'),
-      _actionButton(context, '/register', Icons.person_add, 'Create account'),
       _actionButton(context, '/guides', Icons.menu_book, 'My guides'),
       _actionButton(context, '/discover', Icons.explore, 'Discover guides'),
       _actionButton(context, '/library', Icons.collections_bookmark, 'My library'),
