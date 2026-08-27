@@ -17,6 +17,8 @@ public sealed class GuideOrder
     public string? DiscountCode { get; set; }
     public long DiscountAmountMinorUnits { get; set; }
     public required string CheckoutReference { get; init; }
+    public string ProviderReference { get; set; } = string.Empty;
+    public string ProviderName { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset? RefundedAt { get; set; }
@@ -69,6 +71,8 @@ public sealed class GuideOrderConfiguration : IEntityTypeConfiguration<GuideOrde
         e.Property(x => x.CurrencyCode).HasMaxLength(3);
         e.Property(x => x.DiscountCode).HasMaxLength(60);
         e.Property(x => x.CheckoutReference).HasMaxLength(200);
+        e.Property(x => x.ProviderReference).HasMaxLength(200);
+        e.Property(x => x.ProviderName).HasMaxLength(40);
         e.HasIndex(x => x.CheckoutReference).IsUnique();
         e.HasIndex(x => new { x.BuyerUserId, x.CreatedAt });
         e.HasOne<TravelGuide>().WithMany().HasForeignKey(x => x.GuideId).OnDelete(DeleteBehavior.Restrict);

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Trippify.Application;
 using Trippify.Infrastructure;
 
@@ -42,17 +43,19 @@ public static class CommerceEndpoints
         var payable = guide.PriceMinorUnits.Value - discountAmount;
         var now = clock.UtcNow;
         var idempotencyKey = $"guide:{guide.Id}:buyer:{buyer}:{now.Ticks}";
-        string reference;
+        string reference; string checkoutUrl; string providerName;
         try
         {
             var session = await gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(payable, guide.CurrencyCode!, guide.Id, buyer, appliedCode, "/api/v1/commerce/return/success", "/api/v1/commerce/return/cancel", idempotencyKey), default);
             reference = session.Reference;
+            checkoutUrl = session.Url;
+            providerName = gateway.ProviderName;
         }
         catch (Exception error) when (error is NotSupportedException or IOException or InvalidOperationException) { return Results.Problem("Payments are unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
-        var order = new GuideOrder { Id = Guid.NewGuid(), GuideId = guide.Id, BuyerUserId = buyer, AmountMinorUnits = payable, CurrencyCode = guide.CurrencyCode!, DiscountCode = appliedCode, DiscountAmountMinorUnits = discountAmount, CheckoutReference = reference, CreatedAt = now };
+        var order = new GuideOrder { Id = Guid.NewGuid(), GuideId = guide.Id, BuyerUserId = buyer, AmountMinorUnits = payable, CurrencyCode = guide.CurrencyCode!, DiscountCode = appliedCode, DiscountAmountMinorUnits = discountAmount, CheckoutReference = reference, ProviderReference = reference, ProviderName = providerName, CreatedAt = now };
         db.GuideOrders.Add(order); await db.SaveChangesAsync();
         CommerceCommands.Add(1, new KeyValuePair<string, object?>("operation", "checkout"));
-        return Results.Accepted($"/api/v1/commerce/orders/{order.Id}", new { orderId = order.Id, checkoutReference = reference, amountMinorUnits = payable, currencyCode = order.CurrencyCode });
+        return Results.Accepted($"/api/v1/commerce/orders/{order.Id}", new CheckoutResponse(order.Id, reference, checkoutUrl, payable, order.CurrencyCode, providerName));
     }
 
     private static async Task<IResult> MyOrders(ClaimsPrincipal principal, AppDbContext db)
@@ -85,11 +88,36 @@ public static class CommerceEndpoints
         return Results.Ok(new { discount.Id, discount.Code, discount.PercentOff });
     }
 
-    private static async Task<IResult> Webhook(WebhookRequest request, HttpRequest httpRequest, AppDbContext db, IConfiguration configuration, IClock clock)
+    private static async Task<IResult> Webhook(HttpRequest httpRequest, AppDbContext db, IConfiguration configuration, IClock clock, IServiceProvider services)
     {
-        var expected = configuration["Commerce:WebhookSecret"];
-        var provided = httpRequest.Headers["X-Webhook-Secret"].ToString();
-        if (string.IsNullOrEmpty(expected) || !FixedTimeEquals(expected, provided)) return Results.Unauthorized();
+        httpRequest.EnableBuffering();
+        using var ms = new MemoryStream();
+        await httpRequest.Body.CopyToAsync(ms);
+        var rawBody = ms.ToArray();
+        httpRequest.Body.Position = 0;
+        WebhookRequest? request;
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(httpRequest.Body);
+            request = ReadWebhook(document.RootElement);
+        }
+        catch (JsonException) { return Results.BadRequest(); }
+        if (request is null) return Results.BadRequest();
+        var verifier = services.GetService<IPaymentWebhookVerifier>();
+        var sharedSecret = configuration["Commerce:WebhookSecret"];
+        var headerSnapshot = httpRequest.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        var signed = false;
+        if (verifier is not null && !string.IsNullOrWhiteSpace(verifier.ProviderName))
+        {
+            signed = verifier.VerifySignature(rawBody, headerSnapshot, configuration[$"Payment:WebhookSecret"] ?? sharedSecret ?? string.Empty);
+            if (!signed) return Results.Unauthorized();
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(sharedSecret)) return Results.Unauthorized();
+            var provided = httpRequest.Headers["X-Webhook-Secret"].ToString();
+            if (!FixedTimeEquals(sharedSecret, provided)) return Results.Unauthorized();
+        }
         if (await db.PaymentWebhookEvents.AnyAsync(x => x.EventId == request.EventId)) return Results.Ok(new { replayed = true });
         var order = await db.GuideOrders.SingleOrDefaultAsync(x => x.CheckoutReference == request.CheckoutReference);
         if (order is null) return Results.NotFound();
@@ -111,7 +139,16 @@ public static class CommerceEndpoints
         db.PaymentWebhookEvents.Add(new PaymentWebhookEvent { EventId = request.EventId, Type = request.Type, ProcessedAt = now });
         await db.SaveChangesAsync();
         CommerceCommands.Add(1, new KeyValuePair<string, object?>("operation", "webhook:" + request.Type));
-        return Results.Ok(new { orderId = order.Id, status = order.Status.ToString() });
+        return Results.Ok(new { orderId = order.Id, status = order.Status.ToString(), signed = signed });
+    }
+
+    private static WebhookRequest? ReadWebhook(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return null;
+        if (!element.TryGetProperty("eventId", out var eventId) || eventId.ValueKind != JsonValueKind.String) return null;
+        if (!element.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String) return null;
+        if (!element.TryGetProperty("checkoutReference", out var reference) || reference.ValueKind != JsonValueKind.String) return null;
+        return new WebhookRequest(eventId.GetString()!, type.GetString()!, reference.GetString()!);
     }
 
     private static void AppendSaleLedger(AppDbContext db, GuideOrder order, IConfiguration configuration, DateTimeOffset now)
@@ -131,6 +168,7 @@ public static class CommerceEndpoints
 }
 
 public sealed record CheckoutRequest(Guid GuideId, string? DiscountCode = null);
+public sealed record CheckoutResponse(Guid OrderId, string CheckoutReference, string CheckoutUrl, long AmountMinorUnits, string CurrencyCode, string ProviderName);
 public sealed record OrderResponse(Guid Id, Guid GuideId, string Status, long AmountMinorUnits, string CurrencyCode, string? DiscountCode, long DiscountAmountMinorUnits, DateTimeOffset CreatedAt);
 public sealed record EntitlementResponse(Guid Id, Guid GuideId, string Slug, string Title, DateTimeOffset GrantedAt);
 public sealed record DiscountRequest(string Code, int PercentOff);

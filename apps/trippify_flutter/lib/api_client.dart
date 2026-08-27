@@ -421,10 +421,12 @@ class CheckoutSession {
   const CheckoutSession(
     this.orderId,
     this.checkoutReference,
+    this.checkoutUrl,
     this.amountMinorUnits,
     this.currencyCode,
+    this.providerName,
   );
-  final String orderId, checkoutReference, currencyCode;
+  final String orderId, checkoutReference, checkoutUrl, currencyCode, providerName;
   final int amountMinorUnits;
 }
 
@@ -1628,8 +1630,10 @@ class ApiClient implements AppApi {
     return CheckoutSession(
       v['orderId'] as String,
       v['checkoutReference'] as String,
+      (v['checkoutUrl'] as String?) ?? '',
       v['amountMinorUnits'] as int,
       v['currencyCode'] as String,
+      (v['providerName'] as String?) ?? '',
     );
   }
 

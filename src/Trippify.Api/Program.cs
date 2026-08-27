@@ -75,6 +75,21 @@ builder.Services.AddSingleton<IEmailSender>(sp =>
 builder.Services.AddHttpClient(nameof(ResendEmailSender));
 builder.Services.AddSingleton<RestorableBackupService>();
 builder.Services.AddSingleton<IPaymentGateway, LocalPaymentGateway>();
+var paymentOptions = PaymentProviderOptions.Bind(builder.Configuration);
+paymentOptions.Validate();
+builder.Services.AddSingleton(paymentOptions);
+builder.Services.AddSingleton<IPaymentWebhookVerifier>(sp =>
+{
+    var options = sp.GetRequiredService<PaymentProviderOptions>();
+    if (options.Provider.Equals("local", StringComparison.OrdinalIgnoreCase) || !options.Enabled)
+        return new NoopPaymentWebhookVerifier();
+    var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpPaymentGateway));
+    client.BaseAddress = new Uri(options.Endpoint!);
+    client.Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds);
+    var logger = sp.GetRequiredService<ILogger<HttpPaymentGateway>>();
+    return new HttpPaymentGateway(options, client, logger);
+});
+builder.Services.AddHttpClient(nameof(HttpPaymentGateway));
 var aiOptions = AiProviderOptions.Bind(builder.Configuration);
 aiOptions.Validate();
 builder.Services.AddSingleton(aiOptions);

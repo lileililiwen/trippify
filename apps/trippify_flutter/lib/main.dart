@@ -962,13 +962,22 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
         discountCode: discount.text.trim(),
       );
       setState(
-        () => status =
-            'Checkout started. Pay ${session.amountMinorUnits} '
-            '${session.currencyCode} to unlock.',
+        () => status = session.checkoutUrl.isEmpty
+            ? 'Checkout started. Pay ${session.amountMinorUnits} '
+                '${session.currencyCode} to unlock.'
+            : 'Open this URL to pay: ${session.checkoutUrl}',
       );
-    } catch (_) {
-      setState(() => status = 'Payments are unavailable right now.');
+    } catch (error) {
+      setState(() => status = _checkoutFailureMessage(error));
     }
+  }
+
+  String _checkoutFailureMessage(Object error) {
+    if (error is ApiException) {
+      if (error.statusCode == 503) return 'Payments are unavailable right now. Please retry shortly.';
+      if (error.statusCode == 401 || error.statusCode == 403) return 'Sign in again to continue checkout.';
+    }
+    return 'Checkout failed. Please retry.';
   }
 
   Future<void> toggleFavorite(PublicGuide data) async {

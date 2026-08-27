@@ -198,7 +198,7 @@ class FakeApi implements AppApi {
     String? discountCode,
   }) async {
     if (routeError != null) throw routeError!;
-    return CheckoutSession('order-1', 'cs_test_1', 1875, 'JPY');
+    return CheckoutSession('order-1', 'cs_test_1', 'https://example.test/cs_test_1', 1875, 'JPY', 'test');
   }
 
   @override
