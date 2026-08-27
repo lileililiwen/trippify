@@ -39,6 +39,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<CreatorFollow> CreatorFollows => Set<CreatorFollow>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<GuideRelease> GuideReleases => Set<GuideRelease>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

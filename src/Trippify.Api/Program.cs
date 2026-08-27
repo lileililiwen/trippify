@@ -35,6 +35,7 @@ app.MapReview();
 app.MapVerifiedTrips();
 app.MapOperations();
 app.MapNotifications();
+app.MapVersioning();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = x => x.Tags.Contains("ready") });
 app.Run();

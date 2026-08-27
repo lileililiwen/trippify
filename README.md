@@ -22,3 +22,4 @@ Verified-purchaser reviews, author replies, moderation, reports, and update feed
 Verified trip evidence, retention, badge lifecycle, and opt-in coarse actual metrics are documented in [`docs/verified-trips.md`](docs/verified-trips.md).
 Creator sales/income dashboards and audited role-scoped administration are documented in [`docs/operations.md`](docs/operations.md).
 Creator follows and preference-aware notifications are documented in [`docs/notifications.md`](docs/notifications.md).
+Immutable releases, changelogs, buyer update notifications, and freshness indicators are documented in [`docs/versioning.md`](docs/versioning.md).

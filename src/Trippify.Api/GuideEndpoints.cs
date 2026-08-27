@@ -112,7 +112,9 @@ public static class GuideEndpoints
         guide.PriceMinorUnits = request.Pricing?.PriceMinorUnits; guide.CurrencyCode = request.Pricing is null ? null : request.Pricing.CurrencyCode.Trim().ToUpperInvariant();
         guide.PublishedAt = now; Touch(guide, now);
         db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "published:" + guide.Lifecycle, now));
-        await db.SaveChangesAsync(); GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "publish"));
+        await db.SaveChangesAsync();
+        await VersioningEndpoints.CreateInitialReleaseAsync(db, guide, guide.OwnerUserId, clock);
+        GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "publish"));
         return Results.Ok(new { guide.ConcurrencyToken, guide.Slug, lifecycle = guide.Lifecycle.ToString() });
     }
 

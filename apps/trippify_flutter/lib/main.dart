@@ -793,11 +793,114 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             _VerifiedTripsSection(api: widget.api, guideId: data.id, unlocked: data.unlocked, onSubmit: (message) => setState(() => status = message)),
+            const SizedBox(height: 16),
+            Text('Release history', style: Theme.of(context).textTheme.titleMedium),
+            _ReleasesSection(api: widget.api, guideId: data.id),
           ],
         );
       },
     ),
   );
+}
+
+class _ReleasesSection extends StatefulWidget {
+  const _ReleasesSection({required this.api, required this.guideId});
+  final AppApi api;
+  final String guideId;
+  @override
+  State<_ReleasesSection> createState() => _ReleasesSectionState();
+}
+
+class _ReleasesSectionState extends State<_ReleasesSection> {
+  late Future<GuideReleaseList> releases;
+  late Future<GuideFreshness> freshness;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    setState(() {
+      releases = widget.api.listGuideReleases(widget.guideId);
+      freshness = widget.api.getGuideFreshness(widget.guideId);
+    });
+  }
+
+  Widget _freshnessView() => FutureBuilder<GuideFreshness>(
+        future: freshness,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(8),
+              child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError || !snapshot.hasData) {
+            return const SizedBox.shrink();
+          }
+          final value = snapshot.data!;
+          final label = value.latestVersion == 0
+              ? 'No releases yet.'
+              : 'Last updated ${value.daysSinceLatest ?? 0} day(s) ago (v${value.latestVersion}).';
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Semantics(
+              label: 'Freshness',
+              child: Text(label),
+            ),
+          );
+        },
+      );
+
+  Widget _releasesView() => FutureBuilder<GuideReleaseList>(
+        future: releases,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Release history unavailable.'),
+            );
+          }
+          final items = snapshot.data!.items;
+          if (items.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No releases yet.'),
+            );
+          }
+          return Column(
+            children: [
+              for (final release in items)
+                ListTile(
+                  leading: CircleAvatar(child: Text('v${release.versionNumber}')),
+                  title: Text(release.title),
+                  subtitle: Text(release.changelog),
+                ),
+            ],
+          );
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _freshnessView(),
+        _releasesView(),
+        if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+      ],
+    );
+  }
 }
 
 class LibraryScreen extends StatefulWidget {

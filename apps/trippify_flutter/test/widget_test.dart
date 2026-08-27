@@ -283,6 +283,34 @@ class FakeApi implements AppApi {
     NotificationPreferences preferences,
   ) async =>
       preferences;
+  @override
+  Future<GuideReleaseList> listGuideReleases(String guideId, {int? limit}) async =>
+      const GuideReleaseList(0, []);
+  @override
+  Future<GuideRelease> getGuideRelease(String releaseId) async =>
+      GuideRelease(
+        releaseId,
+        'g1',
+        1,
+        'Initial release.',
+        'Guide',
+        DateTime(2026, 1, 1),
+        '',
+      );
+  @override
+  Future<GuideFreshness> getGuideFreshness(String guideId) async =>
+      GuideFreshness(guideId, 0, null, null);
+  @override
+  Future<GuideRelease> publishGuideRelease(String guideId, String changelog) async =>
+      GuideRelease(
+        'new-release',
+        guideId,
+        1,
+        changelog,
+        'Guide',
+        DateTime(2026, 1, 1),
+        '',
+      );
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -837,5 +865,39 @@ void main() {
     await tester.tap(find.text('Notification preferences'));
     await tester.pumpAndSettle();
     expect(find.byType(SwitchListTile), findsWidgets);
+  });
+  testWidgets('public guide exposes release history empty state', (tester) async {
+    final paid = DiscoveryItem(
+      'tokyo-luxury-nights',
+      'Tokyo luxury nights',
+      'Three refined evenings',
+      'A curated night itinerary.',
+      'JP',
+      3,
+      'paid',
+      2500,
+      'JPY',
+      'author-1',
+    );
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemInfo('Trippify', 'v1')),
+          searchResult: SearchResult(1, const [], [paid]),
+          unlocked: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover guides'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tokyo luxury nights'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 6; i++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Release history'), findsOneWidget);
+    expect(find.text('No releases yet.'), findsAtLeastNWidgets(1));
   });
 }

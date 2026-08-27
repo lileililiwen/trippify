@@ -27,6 +27,37 @@ public static class NotificationFanOut
         await db.SaveChangesAsync();
     }
 
+    public static async Task QueueGuideUpdatedAsync(AppDbContext db, TravelGuide guide, GuideRelease release, IClock clock)
+    {
+        var buyers = await db.PurchaseEntitlements.AsNoTracking()
+            .Where(x => x.GuideId == guide.Id && x.RevokedAt == null)
+            .Select(x => x.UserId)
+            .Distinct()
+            .ToListAsync();
+        foreach (var buyer in buyers)
+        {
+            var prefs = await db.NotificationPreferences.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == buyer);
+            var inAppAllowed = prefs is null || (prefs.InAppEnabled && prefs.NewGuidePublishedInApp);
+            var emailAllowed = prefs is null || (prefs.EmailEnabled && prefs.NewGuidePublishedEmail);
+            if (!inAppAllowed && !emailAllowed) continue;
+            db.Notifications.Add(new Notification
+            {
+                Id = Guid.NewGuid(),
+                UserId = buyer,
+                Kind = NotificationKind.NewGuidePublished,
+                Title = $"Update v{release.VersionNumber} for {guide.Title}",
+                Body = TrimForNotification(release.Changelog),
+                TargetSlug = guide.Slug,
+                TargetGuideId = guide.Id,
+                CreatedAt = clock.UtcNow,
+            });
+        }
+        if (db.Notifications.Local.Count > 0)
+        {
+            await db.SaveChangesAsync();
+        }
+    }
+
     private static string TrimForNotification(string value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;

@@ -105,6 +105,10 @@ abstract interface class AppApi {
   Future<void> markNotificationRead(String id);
   Future<NotificationPreferences> getNotificationPreferences();
   Future<NotificationPreferences> updateNotificationPreferences(NotificationPreferences preferences);
+  Future<GuideReleaseList> listGuideReleases(String guideId, {int? limit});
+  Future<GuideRelease> getGuideRelease(String releaseId);
+  Future<GuideFreshness> getGuideFreshness(String guideId);
+  Future<GuideRelease> publishGuideRelease(String guideId, String changelog);
 }
 
 class GuideSummary {
@@ -592,6 +596,40 @@ class NotificationPreferences {
       followerGainedInApp,
       evidenceReviewedEmail,
       evidenceReviewedInApp;
+}
+
+class GuideRelease {
+  const GuideRelease(
+    this.id,
+    this.guideId,
+    this.versionNumber,
+    this.changelog,
+    this.title,
+    this.publishedAt,
+    this.nodeSummary,
+  );
+  final String id, guideId, changelog, title, nodeSummary;
+  final int versionNumber;
+  final DateTime publishedAt;
+}
+
+class GuideReleaseList {
+  const GuideReleaseList(this.total, this.items);
+  final int total;
+  final List<GuideRelease> items;
+}
+
+class GuideFreshness {
+  const GuideFreshness(
+    this.guideId,
+    this.latestVersion,
+    this.latestPublishedAt,
+    this.daysSinceLatest,
+  );
+  final String guideId;
+  final int latestVersion;
+  final DateTime? latestPublishedAt;
+  final int? daysSinceLatest;
 }
 
 abstract interface class TokenStore {
@@ -1525,6 +1563,69 @@ class ApiClient implements AppApi {
   static DateTime? _parseNullableDate(Object? value) {
     if (value is String && value.isNotEmpty) return DateTime.parse(value);
     return null;
+  }
+
+  @override
+  Future<GuideReleaseList> listGuideReleases(String guideId, {int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/guides/$guideId/releases${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return GuideReleaseList(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map((m) => GuideRelease(
+                m['id'] as String,
+                m['guideId'] as String,
+                m['versionNumber'] as int,
+                m['changelog'] as String,
+                m['title'] as String,
+                DateTime.parse(m['publishedAt'] as String),
+                m['nodeSummary'] as String? ?? '',
+              ))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<GuideRelease> getGuideRelease(String releaseId) async {
+    final v = await _json('GET', '/api/v1/releases/$releaseId', null);
+    return GuideRelease(
+      v['id'] as String,
+      v['guideId'] as String,
+      v['versionNumber'] as int,
+      v['changelog'] as String,
+      v['title'] as String,
+      DateTime.parse(v['publishedAt'] as String),
+      v['nodeSummary'] as String? ?? '',
+    );
+  }
+
+  @override
+  Future<GuideFreshness> getGuideFreshness(String guideId) async {
+    final v = await _json('GET', '/api/v1/guides/$guideId/freshness', null);
+    return GuideFreshness(
+      v['guideId'] as String,
+      v['latestVersion'] as int,
+      _parseNullableDate(v['latestPublishedAt']),
+      v['daysSinceLatest'] == null ? null : v['daysSinceLatest'] as int,
+    );
+  }
+
+  @override
+  Future<GuideRelease> publishGuideRelease(String guideId, String changelog) async {
+    final v = await _json('POST', '/api/v1/guides/$guideId/releases', {
+      'changelog': changelog,
+    });
+    return GuideRelease(
+      v['id'] as String,
+      v['guideId'] as String,
+      v['versionNumber'] as int,
+      v['changelog'] as String,
+      v['title'] as String,
+      DateTime.parse(v['publishedAt'] as String),
+      v['nodeSummary'] as String? ?? '',
+    );
   }
 
   Future<Map<String, dynamic>> _json(
