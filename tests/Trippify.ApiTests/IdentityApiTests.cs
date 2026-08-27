@@ -106,6 +106,58 @@ public sealed class IdentityApiTests(TrippifyFactory factory) : IClassFixture<Tr
         await Login(client, user.Email!, "NewStrong!Pass123");
     }
 
+    [Fact]
+    public async Task My_summary_returns_roles_and_creator_status_for_anonymous_user_creator_and_admin()
+    {
+        using var anonymousClient = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymousClient.GetAsync("/api/v1/me/summary")).StatusCode);
+
+        var ordinary = await CreateConfirmedUser("ordinary-summary@example.com", "Strong!Pass123");
+        using var userClient = factory.CreateClient();
+        userClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(userClient, ordinary.Email!, "Strong!Pass123"));
+        var userSummary = await userClient.GetAsync("/api/v1/me/summary");
+        Assert.Equal(HttpStatusCode.OK, userSummary.StatusCode);
+        using (var userDoc = JsonDocument.Parse(await userSummary.Content.ReadAsStringAsync()))
+        {
+            var root = userDoc.RootElement;
+            Assert.Equal(ordinary.Email, root.GetProperty("email").GetString());
+            Assert.False(root.GetProperty("isCreator").GetBoolean());
+            Assert.Equal("Active", root.GetProperty("accountStatus").GetString());
+            Assert.Equal(0, root.GetProperty("roles").GetArrayLength());
+        }
+
+        var creator = await CreateConfirmedUser("creator-summary@example.com", "Strong!Pass123");
+        await WithServices(async services =>
+        {
+            var db = services.GetRequiredService<AppDbContext>();
+            db.UserProfiles.Add(new UserProfile { UserId = creator.Id, DisplayName = "Creator Traveler", Locale = "en" });
+            db.CreatorProfiles.Add(new CreatorProfile { UserId = creator.Id, Slug = "creator-traveler", Status = CreatorStatus.Active });
+            await db.SaveChangesAsync();
+        });
+        using var creatorClient = factory.CreateClient();
+        creatorClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(creatorClient, creator.Email!, "Strong!Pass123"));
+        var creatorSummary = await creatorClient.GetAsync("/api/v1/me/summary");
+        Assert.Equal(HttpStatusCode.OK, creatorSummary.StatusCode);
+        using (var creatorDoc = JsonDocument.Parse(await creatorSummary.Content.ReadAsStringAsync()))
+        {
+            var root = creatorDoc.RootElement;
+            Assert.Equal("Creator Traveler", root.GetProperty("displayName").GetString());
+            Assert.True(root.GetProperty("isCreator").GetBoolean());
+            Assert.True(root.GetProperty("emailConfirmed").GetBoolean());
+        }
+
+        var admin = await CreateConfirmedUser("admin-summary@example.com", "Strong!Pass123", true);
+        using var adminClient = factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(adminClient, admin.Email!, "Strong!Pass123"));
+        var adminSummary = await adminClient.GetAsync("/api/v1/me/summary");
+        Assert.Equal(HttpStatusCode.OK, adminSummary.StatusCode);
+        using (var adminDoc = JsonDocument.Parse(await adminSummary.Content.ReadAsStringAsync()))
+        {
+            var roles = adminDoc.RootElement.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).ToArray();
+            Assert.Contains("Administrator", roles);
+        }
+    }
+
     private async Task<AppUser> CreateConfirmedUser(string email, string password, bool admin = false)
     {
         AppUser? created = null;
