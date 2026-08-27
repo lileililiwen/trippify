@@ -43,9 +43,39 @@ public sealed class QuotaUsage
     public Guid TenantId { get; init; }
     public required string Metric { get; init; }
     public int Used { get; set; }
+    public int Reserved { get; set; }
     public int Limit { get; set; }
+    public bool IsCustomLimit { get; set; }
     public DateTimeOffset PeriodStart { get; init; }
     public DateTimeOffset PeriodEnd { get; init; }
+}
+
+public enum QuotaReservationStatus { Reserved, Finalized, Released }
+public enum QuotaHistoryKind { Reserved, Finalized, Released, Adjusted }
+
+public sealed class QuotaReservation
+{
+    public Guid Id { get; init; }
+    public Guid TenantId { get; init; }
+    public required string Metric { get; init; }
+    public int Amount { get; init; }
+    public QuotaReservationStatus Status { get; set; } = QuotaReservationStatus.Reserved;
+    public DateTimeOffset PeriodStart { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class QuotaHistoryEntry
+{
+    public Guid Id { get; init; }
+    public Guid TenantId { get; init; }
+    public Guid? ReservationId { get; init; }
+    public Guid? ActorUserId { get; init; }
+    public required string Metric { get; init; }
+    public QuotaHistoryKind Kind { get; init; }
+    public int Amount { get; init; }
+    public required string Reason { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
 }
 
 public sealed class TenantAuditEntry
@@ -105,6 +135,32 @@ public sealed class QuotaUsageConfiguration : IEntityTypeConfiguration<QuotaUsag
         e.Property(x => x.Metric).HasMaxLength(40);
         e.HasIndex(x => new { x.TenantId, x.Metric, x.PeriodStart }).IsUnique();
         e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class QuotaReservationConfiguration : IEntityTypeConfiguration<QuotaReservation>
+{
+    public void Configure(EntityTypeBuilder<QuotaReservation> e)
+    {
+        e.ToTable("quota_reservations"); e.HasKey(x => x.Id);
+        e.Property(x => x.Metric).HasMaxLength(40);
+        e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        e.HasIndex(x => new { x.TenantId, x.Metric, x.PeriodStart });
+        e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class QuotaHistoryEntryConfiguration : IEntityTypeConfiguration<QuotaHistoryEntry>
+{
+    public void Configure(EntityTypeBuilder<QuotaHistoryEntry> e)
+    {
+        e.ToTable("quota_history_entries"); e.HasKey(x => x.Id);
+        e.Property(x => x.Metric).HasMaxLength(40);
+        e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+        e.Property(x => x.Reason).HasMaxLength(500);
+        e.HasIndex(x => new { x.TenantId, x.Metric, x.OccurredAt });
+        e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

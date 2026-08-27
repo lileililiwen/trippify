@@ -29,34 +29,38 @@ public static class AssistedImportEndpoints
         group.MapGet("/ai-quotas", ListMyAiQuotas);
     }
 
-    private static async Task<IResult> SubmitTextImport(SubmitTextImportRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai)
+    private static async Task<IResult> SubmitTextImport(SubmitTextImportRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai, IQuotaService quotas)
     {
         var user = IdentityEndpoints.CurrentUserId(principal);
         if (string.IsNullOrWhiteSpace(request.SourceText) || request.SourceText.Length is < 30 or > 20000)
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["sourceText"] = ["Source text must be between 30 and 20000 characters."] });
-        if (!await TryConsumeQuotaAsync(db, user, "Imports", DefaultImportLimit, clock))
-            return Results.Problem("Import quota exceeded.", statusCode: StatusCodes.Status403Forbidden);
+        var reservation = await quotas.ReserveAsync(user, QuotaMetrics.AiImports, 1);
+        if (!reservation.Succeeded) return QuotaProblem.From(reservation);
         var now = clock.UtcNow;
         var job = new ImportJob { Id = Guid.NewGuid(), UserId = user, Kind = ImportKind.Text, SourceText = request.SourceText.Trim(), Status = ImportStatus.Queued, SubmittedAt = now };
         db.ImportJobs.Add(job);
         await db.SaveChangesAsync();
         await ProcessInternalAsync(db, ai, clock, job);
+        if (job.Status == ImportStatus.Completed) await quotas.FinalizeAsync(reservation.ReservationId!.Value);
+        else await quotas.ReleaseAsync(reservation.ReservationId!.Value, "ai-import-failed");
         AssistedImportCommands.Add(1, new KeyValuePair<string, object?>("operation", "import-text-queued"));
         return Results.Created($"/api/v1/me/imports/{job.Id}", JobResponse(job));
     }
 
-    private static async Task<IResult> SubmitObjectImport(SubmitObjectImportRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai)
+    private static async Task<IResult> SubmitObjectImport(SubmitObjectImportRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai, IQuotaService quotas)
     {
         var user = IdentityEndpoints.CurrentUserId(principal);
         if (string.IsNullOrWhiteSpace(request.ObjectKey)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["objectKey"] = ["Object key is required."] });
         if (!Enum.TryParse<ImportKind>(request.Kind, true, out var kind)) kind = ImportKind.Photo;
-        if (!await TryConsumeQuotaAsync(db, user, "Imports", DefaultImportLimit, clock))
-            return Results.Problem("Import quota exceeded.", statusCode: StatusCodes.Status403Forbidden);
+        var reservation = await quotas.ReserveAsync(user, QuotaMetrics.AiImports, 1);
+        if (!reservation.Succeeded) return QuotaProblem.From(reservation);
         var now = clock.UtcNow;
         var job = new ImportJob { Id = Guid.NewGuid(), UserId = user, Kind = kind, ObjectKey = request.ObjectKey.Trim(), Status = ImportStatus.Queued, SubmittedAt = now };
         db.ImportJobs.Add(job);
         await db.SaveChangesAsync();
         await ProcessInternalAsync(db, ai, clock, job);
+        if (job.Status == ImportStatus.Completed) await quotas.FinalizeAsync(reservation.ReservationId!.Value);
+        else await quotas.ReleaseAsync(reservation.ReservationId!.Value, "ai-import-failed");
         AssistedImportCommands.Add(1, new KeyValuePair<string, object?>("operation", "import-object-queued"));
         return Results.Created($"/api/v1/me/imports/{job.Id}", JobResponse(job));
     }
@@ -115,17 +119,19 @@ public static class AssistedImportEndpoints
         return Results.Ok(DraftResponse(draft));
     }
 
-    private static async Task<IResult> CreateTranslation(CreateTranslationRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai)
+    private static async Task<IResult> CreateTranslation(CreateTranslationRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IAiAssistant ai, IQuotaService quotas)
     {
         var user = IdentityEndpoints.CurrentUserId(principal);
         if (string.IsNullOrWhiteSpace(request.Locale) || request.Locale.Length is < 2 or > 8)
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["locale"] = ["Locale must be 2-8 characters."] });
         if (string.IsNullOrWhiteSpace(request.Body)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = ["Body is required."] });
-        if (!await TryConsumeQuotaAsync(db, user, "Translations", DefaultTranslationLimit, clock))
-            return Results.Problem("Translation quota exceeded.", statusCode: StatusCodes.Status403Forbidden);
         var source = await db.ImportDrafts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.SourceDraftId && x.UserId == user);
         if (source is null) return Results.NotFound();
-        var translated = await ai.AssistAsync(request.Body, default);
+        var reservation = await quotas.ReserveAsync(user, QuotaMetrics.AiImports, 1);
+        if (!reservation.Succeeded) return QuotaProblem.From(reservation);
+        string translated;
+        try { translated = await ai.AssistAsync(request.Body, default); }
+        catch { await quotas.ReleaseAsync(reservation.ReservationId!.Value, "ai-translation-failed"); throw; }
         var existing = await db.Translations.SingleOrDefaultAsync(x => x.SourceDraftId == source.Id && x.Locale == request.Locale);
         if (existing is null)
         {
@@ -137,6 +143,7 @@ public static class AssistedImportEndpoints
             existing.Body = translated; existing.Status = TranslationStatus.Outdated; existing.UpdatedAt = clock.UtcNow;
         }
         await db.SaveChangesAsync();
+        await quotas.FinalizeAsync(reservation.ReservationId!.Value);
         AssistedImportCommands.Add(1, new KeyValuePair<string, object?>("operation", "translation-linked"));
         return Results.Ok(TranslationResponse(existing));
     }
@@ -154,10 +161,10 @@ public static class AssistedImportEndpoints
     private static async Task<IResult> ListMyAiQuotas(ClaimsPrincipal principal, AppDbContext db, IClock clock)
     {
         var user = IdentityEndpoints.CurrentUserId(principal);
-        await EnsureQuotaAsync(db, user, "Imports", DefaultImportLimit, clock);
-        await EnsureQuotaAsync(db, user, "Translations", DefaultTranslationLimit, clock);
-        var quotas = await db.AiQuotaUsages.AsNoTracking()
-            .Where(x => x.UserId == user)
+        await ManagedSaasEndpoints.EnsureTenantForUserAsync(db, user, clock);
+        var tenantId = await db.TenantMembers.AsNoTracking().Where(x => x.UserId == user).Select(x => x.TenantId).SingleAsync();
+        var quotas = await db.QuotaUsages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Metric == QuotaMetrics.AiImports)
             .ToListAsync();
         return Results.Ok(quotas.Select(q => new QuotaUsageResponse(q.Metric, q.Used, q.Limit, q.PeriodStart, q.PeriodEnd)).ToList());
     }

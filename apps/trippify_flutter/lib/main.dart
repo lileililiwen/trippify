@@ -1542,8 +1542,8 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
             : 'Import ${detail.job.status}.';
       });
       _loadQuotas();
-    } catch (_) {
-      setState(() => status = 'Cannot submit text import.');
+    } catch (error) {
+      setState(() => status = _quotaAwareMessage(error, 'Cannot submit text import.'));
     }
   }
 
@@ -1557,8 +1557,8 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
             : 'Object import ${detail.job.status}.';
       });
       _loadQuotas();
-    } catch (_) {
-      setState(() => status = 'Cannot submit object import.');
+    } catch (error) {
+      setState(() => status = _quotaAwareMessage(error, 'Cannot submit object import.'));
     }
   }
 
@@ -1594,8 +1594,8 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       final translation = await widget.api.createTranslation(draft!.id, locale, 'Translated version');
       setState(() => status = 'Translation saved (${translation.locale}).');
       _loadQuotas();
-    } catch (_) {
-      setState(() => status = 'Cannot save translation.');
+    } catch (error) {
+      setState(() => status = _quotaAwareMessage(error, 'Cannot save translation.'));
     }
   }
 
@@ -1652,6 +1652,15 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
         ],
       ),
     );
+  }
+
+  String _quotaAwareMessage(Object error, String fallback) {
+    if (error is ApiException &&
+        error.statusCode == 403 &&
+        error.message.toLowerCase().contains('quota')) {
+      return 'Plan limit reached. Check Quotas for the reset date or upgrade your plan.';
+    }
+    return fallback;
   }
 }
 

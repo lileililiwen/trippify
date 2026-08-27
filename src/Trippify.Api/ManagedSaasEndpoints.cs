@@ -21,6 +21,7 @@ public static class ManagedSaasEndpoints
         adminGroup.MapPut("/{tenantId:guid}", UpdateTenant);
         adminGroup.MapPost("/{tenantId:guid}/suspend", SuspendTenant);
         adminGroup.MapPut("/{tenantId:guid}/quotas/{metric}", SetQuota);
+        adminGroup.MapPost("/{tenantId:guid}/quotas/{metric}/adjustments", AdjustQuota);
         adminGroup.MapGet("/{tenantId:guid}/audit", ListTenantAudit);
 
         var tenantGroup = app.MapGroup("/api/v1/me/tenant").RequireAuthorization();
@@ -34,7 +35,11 @@ public static class ManagedSaasEndpoints
     public static async Task EnsureTenantForUserAsync(AppDbContext db, Guid userId, IClock clock)
     {
         var membership = await db.TenantMembers.AsNoTracking().SingleOrDefaultAsync(m => m.UserId == userId);
-        if (membership is not null) return;
+        if (membership is not null)
+        {
+            await EnsurePlanQuotasAsync(db, membership.TenantId, clock);
+            return;
+        }
         var emailPrefix = userId.ToString("N");
         var slug = $"tenant-{emailPrefix}";
         if (await db.Tenants.AnyAsync(x => x.Slug == slug)) slug = $"{slug}-{Guid.NewGuid():N}".Substring(0, 60);
@@ -66,6 +71,7 @@ public static class ManagedSaasEndpoints
             CreatedAt = clock.UtcNow,
         });
         await db.SaveChangesAsync();
+        await EnsurePlanQuotasAsync(db, tenant.Id, clock);
     }
 
     private static async Task<IResult> CreateTenant(CreateTenantRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
@@ -98,6 +104,7 @@ public static class ManagedSaasEndpoints
         });
         db.TenantAuditEntries.Add(Audit(tenant.Id, IdentityEndpoints.CurrentUserId(principal), "tenant-created", "admin-bootstrap"));
         await db.SaveChangesAsync();
+        await EnsurePlanQuotasAsync(db, tenant.Id, clock);
         ManagedSaasCommands.Add(1, new KeyValuePair<string, object?>("operation", "tenant-created"));
         return Results.Created($"/api/v1/admin/tenants/{tenant.Id}", TenantResponse(tenant));
     }
@@ -149,6 +156,8 @@ public static class ManagedSaasEndpoints
     {
         var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tenantId);
         if (tenant is null) return Results.NotFound();
+        try { metric = QuotaMetrics.Canonical(metric); }
+        catch (ArgumentOutOfRangeException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["metric"] = ["Unknown quota metric."] }); }
         if (request.Limit < 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["limit"] = ["Limit must be zero or positive."] });
         var periodStart = await EnsureQuotaAsync(db, tenantId, metric, clock);
         var quota = await db.QuotaUsages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Metric == metric && x.PeriodStart == periodStart);
@@ -161,6 +170,7 @@ public static class ManagedSaasEndpoints
                 Metric = metric,
                 Used = 0,
                 Limit = request.Limit,
+                IsCustomLimit = true,
                 PeriodStart = periodStart,
                 PeriodEnd = periodStart.AddMonths(1),
             };
@@ -169,10 +179,31 @@ public static class ManagedSaasEndpoints
         else
         {
             quota.Limit = request.Limit;
+            quota.IsCustomLimit = true;
         }
         db.TenantAuditEntries.Add(Audit(tenant.Id, IdentityEndpoints.CurrentUserId(principal), $"quota-set:{metric}", $"limit={request.Limit}"));
         await db.SaveChangesAsync();
         ManagedSaasCommands.Add(1, new KeyValuePair<string, object?>("operation", "quota-set"));
+        return Results.Ok(new QuotaResponse(quota.Metric, quota.Used, quota.Limit, quota.PeriodStart, quota.PeriodEnd));
+    }
+
+    private static async Task<IResult> AdjustQuota(Guid tenantId, string metric, AdjustQuotaRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    {
+        try { metric = QuotaMetrics.Canonical(metric); }
+        catch (ArgumentOutOfRangeException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["metric"] = ["Unknown quota metric."] }); }
+        if (request.Amount == 0 || string.IsNullOrWhiteSpace(request.Reason))
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["adjustment"] = ["A non-zero amount and reason are required."] });
+        var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tenantId);
+        if (tenant is null) return Results.NotFound();
+        var period = await EnsureQuotaAsync(db, tenantId, metric, clock);
+        var quota = await db.QuotaUsages.SingleAsync(x => x.TenantId == tenantId && x.Metric == metric && x.PeriodStart == period);
+        if (quota.Used + request.Amount < 0)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["amount"] = ["Adjustment cannot make usage negative."] });
+        quota.Used += request.Amount;
+        var actor = IdentityEndpoints.CurrentUserId(principal);
+        db.QuotaHistoryEntries.Add(new QuotaHistoryEntry { Id = Guid.NewGuid(), TenantId = tenantId, ActorUserId = actor, Metric = metric, Kind = QuotaHistoryKind.Adjusted, Amount = request.Amount, Reason = request.Reason.Trim(), OccurredAt = clock.UtcNow });
+        db.TenantAuditEntries.Add(Audit(tenantId, actor, $"quota-adjusted:{metric}", $"amount={request.Amount}; reason={request.Reason.Trim()}"));
+        await db.SaveChangesAsync();
         return Results.Ok(new QuotaResponse(quota.Metric, quota.Used, quota.Limit, quota.PeriodStart, quota.PeriodEnd));
     }
 
@@ -219,6 +250,9 @@ public static class ManagedSaasEndpoints
         {
             subscription.Plan = plan;
         }
+        var currentPeriod = new DateTimeOffset(clock.UtcNow.Year, clock.UtcNow.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var planQuotas = await db.QuotaUsages.Where(x => x.TenantId == member.TenantId && x.PeriodStart == currentPeriod && !x.IsCustomLimit).ToListAsync();
+        foreach (var quota in planQuotas) quota.Limit = QuotaMetrics.Limit(plan, quota.Metric);
         db.TenantAuditEntries.Add(Audit(member.TenantId, user, "subscription-updated", plan.ToString()));
         await db.SaveChangesAsync();
         ManagedSaasCommands.Add(1, new KeyValuePair<string, object?>("operation", "subscription-updated"));
@@ -274,19 +308,30 @@ public static class ManagedSaasEndpoints
         var existing = await db.QuotaUsages.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Metric == metric && x.PeriodStart == periodStart);
         if (existing is null)
         {
+            var plan = await db.Subscriptions.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => (SubscriptionPlan?)x.Plan).SingleOrDefaultAsync() ?? SubscriptionPlan.Free;
             db.QuotaUsages.Add(new QuotaUsage
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 Metric = metric,
                 Used = 0,
-                Limit = 0,
+                Limit = QuotaMetrics.Limit(plan, metric),
                 PeriodStart = periodStart,
                 PeriodEnd = periodStart.AddMonths(1),
             });
             await db.SaveChangesAsync();
         }
         return periodStart;
+    }
+
+    private static async Task EnsurePlanQuotasAsync(AppDbContext db, Guid tenantId, IClock clock)
+    {
+        var plan = await db.Subscriptions.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => (SubscriptionPlan?)x.Plan).SingleOrDefaultAsync() ?? SubscriptionPlan.Free;
+        foreach (var metric in QuotaMetrics.All) await EnsureQuotaAsync(db, tenantId, metric, clock);
+        var period = new DateTimeOffset(clock.UtcNow.Year, clock.UtcNow.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var rows = await db.QuotaUsages.Where(x => x.TenantId == tenantId && x.PeriodStart == period && !x.IsCustomLimit).ToListAsync();
+        foreach (var row in rows) row.Limit = QuotaMetrics.Limit(plan, row.Metric);
+        await db.SaveChangesAsync();
     }
 
     private static TenantResponse TenantResponse(Tenant t) => new(t.Id, t.Slug, t.DisplayName, t.PrimaryDomain, t.Status.ToString(), t.BrandingJson, t.CreatedAt);
@@ -307,6 +352,7 @@ public sealed record CreateTenantRequest(string Slug, string DisplayName, string
 public sealed record UpdateTenantRequest(string? DisplayName, string? PrimaryDomain, string? BrandingJson);
 public sealed record TenantActionRequest(string Reason);
 public sealed record SetQuotaRequest(int Limit);
+public sealed record AdjustQuotaRequest(int Amount, string Reason);
 public sealed record UpdateSubscriptionRequest(string Plan);
 public sealed record TenantResponse(Guid Id, string Slug, string DisplayName, string PrimaryDomain, string Status, string BrandingJson, DateTimeOffset CreatedAt);
 public sealed record TenantListResponse(int Total, IReadOnlyList<TenantResponse> Items);

@@ -33,7 +33,7 @@ public static class GuideEndpoints
         return Results.Ok(guides);
     }
 
-    private static async Task<IResult> Create(GuideMetadataRequest request, HttpRequest httpRequest, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static async Task<IResult> Create(GuideMetadataRequest request, HttpRequest httpRequest, ClaimsPrincipal principal, AppDbContext db, IClock clock, IQuotaService quotas)
     {
         var owner = IdentityEndpoints.CurrentUserId(principal);
         if (!await db.CreatorProfiles.AnyAsync(x => x.UserId == owner && x.Status == CreatorStatus.Active)) return Results.Forbid();
@@ -45,11 +45,14 @@ public static class GuideEndpoints
             var existing = await db.GuideCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.OwnerUserId == owner && x.IdempotencyKey == key && x.Operation == "create");
             if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
         }
+        var reservation = await quotas.ReserveAsync(owner, QuotaMetrics.Guides, 1);
+        if (!reservation.Succeeded) return QuotaProblem.From(reservation);
         var now = clock.UtcNow;
         var guide = new TravelGuide { Id = Guid.NewGuid(), OwnerUserId = owner, Title = request.Title.Trim(), Subtitle = request.Subtitle.Trim(), Summary = request.Summary.Trim(), CoverUrl = request.CoverUrl, CountryCode = request.CountryCode.Trim().ToUpperInvariant(), Cities = Normalize(request.Cities, 50), Tags = Normalize(request.Tags, 50), TripDays = request.TripDays, Slug = await UniqueSlug(db, request.Title), CreatedAt = now, UpdatedAt = now };
         db.TravelGuides.Add(guide); db.GuideAuditEntries.Add(Audit(guide.Id, owner, "created", now));
         if (key.Length > 0) db.GuideCommandReceipts.Add(new GuideCommandReceipt { OwnerUserId = owner, IdempotencyKey = key, Operation = "create", ResourceId = guide.Id, CreatedAt = now });
-        await db.SaveChangesAsync();
+        try { await db.SaveChangesAsync(); await quotas.FinalizeAsync(reservation.ReservationId!.Value); }
+        catch { await quotas.ReleaseAsync(reservation.ReservationId!.Value, "guide-create-failed"); throw; }
         GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "create"));
         return Results.Created($"/api/v1/guides/{guide.Id}", new { guide.Id, guide.Slug, guide.ConcurrencyToken });
     }
@@ -80,13 +83,15 @@ public static class GuideEndpoints
         guide.TripDays = request.Days.Count; Touch(guide, clock.UtcNow); db.GuideAuditEntries.Add(Audit(guide.Id, guide.OwnerUserId, "structure-replaced", guide.UpdatedAt)); await db.SaveChangesAsync(); GuideCommands.Add(1, new KeyValuePair<string, object?>("operation", "structure-replaced")); return Results.Ok(new { guide.ConcurrencyToken });
     }
 
-    private static async Task<IResult> AddMedia(Guid guideId, MediaRequest request, ClaimsPrincipal principal, AppDbContext db, IObjectStorage storage, IClock clock)
+    private static async Task<IResult> AddMedia(Guid guideId, MediaRequest request, ClaimsPrincipal principal, AppDbContext db, IObjectStorage storage, IClock clock, IQuotaService quotas)
     {
         var guide = await OwnedGuide(guideId, principal, db).SingleOrDefaultAsync(); if (guide is null) return Results.NotFound(); if (guide.ConcurrencyToken != request.ConcurrencyToken) return Conflict(guide.ConcurrencyToken);
         byte[] bytes; try { bytes = Convert.FromBase64String(request.ContentBase64); } catch (FormatException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["contentBase64"] = ["Media content is not valid base64."] }); }
         if (bytes.Length is 0 or > 10_000_000) return Results.ValidationProblem(new Dictionary<string, string[]> { ["contentBase64"] = ["Media must contain 1 byte to 10 MB."] });
-        try { await using var stream = new MemoryStream(bytes); var uri = await storage.PutAsync(request.StorageKey, stream, default); db.GuideMedia.Add(new GuideMedia { Id = Guid.NewGuid(), GuideId = guide.Id, Position = await db.GuideMedia.CountAsync(x => x.GuideId == guide.Id), StorageKey = request.StorageKey, Url = uri.ToString(), Caption = request.Caption }); Touch(guide, clock.UtcNow); await db.SaveChangesAsync(); return Results.Ok(new { guide.ConcurrencyToken, url = uri }); }
-        catch (Exception error) when (error is IOException or NotSupportedException) { return Results.Problem("Media storage is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
+        var reservation = await quotas.ReserveAsync(guide.OwnerUserId, QuotaMetrics.MediaMegabytes, Math.Max(1, (int)Math.Ceiling(bytes.Length / 1_000_000d)));
+        if (!reservation.Succeeded) return QuotaProblem.From(reservation);
+        try { await using var stream = new MemoryStream(bytes); var uri = await storage.PutAsync(request.StorageKey, stream, default); db.GuideMedia.Add(new GuideMedia { Id = Guid.NewGuid(), GuideId = guide.Id, Position = await db.GuideMedia.CountAsync(x => x.GuideId == guide.Id), StorageKey = request.StorageKey, Url = uri.ToString(), Caption = request.Caption }); Touch(guide, clock.UtcNow); await db.SaveChangesAsync(); await quotas.FinalizeAsync(reservation.ReservationId!.Value); return Results.Ok(new { guide.ConcurrencyToken, url = uri }); }
+        catch (Exception error) when (error is IOException or NotSupportedException) { await quotas.ReleaseAsync(reservation.ReservationId!.Value, "media-storage-failed"); return Results.Problem("Media storage is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
 
     private static async Task<IResult> SetLifecycle(Guid guideId, LifecycleRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)

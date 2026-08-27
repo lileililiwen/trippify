@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Trippify.Application;
+using Trippify.Api;
 using Trippify.Infrastructure;
 using Xunit;
 
@@ -161,6 +162,142 @@ public sealed class ManagedSaasApiTests(TrippifyFactory factory) : IClassFixture
         });
     }
 
+    [Fact]
+    public async Task Concurrent_requests_cannot_reserve_the_same_last_quota_unit()
+    {
+        var user = await CreateUser("saas-concurrent@example.com");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(client, user.Email!));
+        (await client.GetAsync("/api/v1/me/tenant")).EnsureSuccessStatusCode();
+        await WithDb(async db =>
+        {
+            var tenantId = await db.TenantMembers.Where(x => x.UserId == user.Id).Select(x => x.TenantId).SingleAsync();
+            var quota = await db.QuotaUsages.SingleAsync(x => x.TenantId == tenantId && x.Metric == QuotaMetrics.Guides);
+            quota.Limit = 1;
+            quota.IsCustomLimit = true;
+            await db.SaveChangesAsync();
+        });
+
+        async Task<QuotaReservationResult> Reserve()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IQuotaService>().ReserveAsync(user.Id, QuotaMetrics.Guides, 1);
+        }
+
+        var results = await Task.WhenAll(Reserve(), Reserve());
+        Assert.Single(results, x => x.Succeeded);
+        Assert.Single(results, x => x.Failure == "quota-exceeded");
+        await WithDb(async db =>
+        {
+            var tenantId = await db.TenantMembers.Where(x => x.UserId == user.Id).Select(x => x.TenantId).SingleAsync();
+            var quota = await db.QuotaUsages.SingleAsync(x => x.TenantId == tenantId && x.Metric == QuotaMetrics.Guides);
+            Assert.Equal(1, quota.Reserved);
+            Assert.Equal(0, quota.Used);
+        });
+    }
+
+    [Fact]
+    public async Task Released_reservation_does_not_consume_usage_and_is_immutable_history()
+    {
+        var user = await CreateUser("saas-release@example.com");
+        Guid reservationId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IQuotaService>();
+            var reserved = await service.ReserveAsync(user.Id, QuotaMetrics.AiImports, 1);
+            Assert.True(reserved.Succeeded);
+            reservationId = reserved.ReservationId!.Value;
+            await service.ReleaseAsync(reservationId, "provider-failed");
+            await service.ReleaseAsync(reservationId, "duplicate-release");
+        }
+        await WithDb(async db =>
+        {
+            var reservation = await db.QuotaReservations.SingleAsync(x => x.Id == reservationId);
+            var quota = await db.QuotaUsages.SingleAsync(x => x.TenantId == reservation.TenantId && x.Metric == QuotaMetrics.AiImports);
+            Assert.Equal(QuotaReservationStatus.Released, reservation.Status);
+            Assert.Equal(0, quota.Used);
+            Assert.Equal(0, quota.Reserved);
+            Assert.Equal(2, await db.QuotaHistoryEntries.CountAsync(x => x.ReservationId == reservationId));
+        });
+    }
+
+    [Fact]
+    public async Task Unknown_metric_fails_closed_and_suspended_tenant_cannot_reserve()
+    {
+        var admin = await CreateUser("saas-limit-admin@example.com", admin: true);
+        var user = await CreateUser("saas-suspended@example.com");
+        using var userClient = factory.CreateClient();
+        userClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(userClient, user.Email!));
+        (await userClient.GetAsync("/api/v1/me/tenant")).EnsureSuccessStatusCode();
+        Guid tenantId = Guid.Empty;
+        await WithDb(async db =>
+        {
+            tenantId = await db.TenantMembers.Where(x => x.UserId == user.Id).Select(x => x.TenantId).SingleAsync();
+            (await db.Tenants.SingleAsync(x => x.Id == tenantId)).Status = TenantStatus.Suspended;
+            await db.SaveChangesAsync();
+        });
+        using var adminClient = factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(adminClient, admin.Email!));
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/quotas/Secrets", new { limit = 5 })).StatusCode);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var denied = await scope.ServiceProvider.GetRequiredService<IQuotaService>().ReserveAsync(user.Id, QuotaMetrics.Guides, 1);
+        Assert.False(denied.Succeeded);
+        Assert.Equal("tenant-suspended", denied.Failure);
+    }
+
+    [Fact]
+    public async Task New_period_rolls_over_and_plan_change_updates_non_custom_limits()
+    {
+        var user = await CreateUser("saas-rollover@example.com");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(client, user.Email!));
+        (await client.GetAsync("/api/v1/me/tenant")).EnsureSuccessStatusCode();
+        var upgraded = await client.PostAsJsonAsync("/api/v1/me/tenant/subscription", new { plan = "Pro" });
+        upgraded.EnsureSuccessStatusCode();
+        await WithDb(async db =>
+        {
+            var tenantId = await db.TenantMembers.Where(x => x.UserId == user.Id).Select(x => x.TenantId).SingleAsync();
+            var current = await db.QuotaUsages.SingleAsync(x => x.TenantId == tenantId && x.Metric == QuotaMetrics.Guides);
+            Assert.Equal(100, current.Limit);
+            current.Used = current.Limit;
+            await db.SaveChangesAsync();
+            var nextMonth = new DateTimeOffset(current.PeriodEnd.Year, current.PeriodEnd.Month, 2, 0, 0, 0, TimeSpan.Zero);
+            var service = new QuotaService(db, new FixedClock(nextMonth));
+            var nextPeriod = await service.ReserveAsync(user.Id, QuotaMetrics.Guides, 1);
+            Assert.True(nextPeriod.Succeeded);
+            Assert.Equal(100, nextPeriod.Limit);
+            Assert.Equal(current.PeriodEnd.AddMonths(1), nextPeriod.ResetAt);
+        });
+    }
+
+    [Fact]
+    public async Task Quota_denial_returns_stable_scoped_problem_and_changes_no_guide_state()
+    {
+        var creator = await CreateUser("saas-denied-creator@example.com", creator: true);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(client, creator.Email!));
+        (await client.GetAsync("/api/v1/me/tenant")).EnsureSuccessStatusCode();
+        await WithDb(async db =>
+        {
+            var tenantId = await db.TenantMembers.Where(x => x.UserId == creator.Id).Select(x => x.TenantId).SingleAsync();
+            var quota = await db.QuotaUsages.SingleAsync(x => x.TenantId == tenantId && x.Metric == QuotaMetrics.Guides);
+            quota.Limit = 0;
+            quota.IsCustomLimit = true;
+            await db.SaveChangesAsync();
+        });
+        var response = await client.PostAsJsonAsync("/api/v1/guides", new
+        {
+            title = "Denied guide", subtitle = "", summary = "", coverUrl = (string?)null,
+            countryCode = "JP", cities = Array.Empty<string>(), tags = Array.Empty<string>(), tripDays = 1,
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await Json(response);
+        Assert.Equal("quota-exceeded", problem.GetProperty("code").GetString());
+        Assert.Equal("Guides", problem.GetProperty("metric").GetString());
+        Assert.False(problem.TryGetProperty("tenantId", out _));
+        await WithDb(async db => Assert.False(await db.TravelGuides.AnyAsync(x => x.OwnerUserId == creator.Id)));
+    }
+
     private async Task WithDb(Func<AppDbContext, Task> action)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -203,5 +340,10 @@ public sealed class ManagedSaasApiTests(TrippifyFactory factory) : IClassFixture
         var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = Password });
         response.EnsureSuccessStatusCode();
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("accessToken").GetString()!;
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow => now;
     }
 }

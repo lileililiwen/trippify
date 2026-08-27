@@ -49,6 +49,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<QuotaUsage> QuotaUsages => Set<QuotaUsage>();
+    public DbSet<QuotaReservation> QuotaReservations => Set<QuotaReservation>();
+    public DbSet<QuotaHistoryEntry> QuotaHistoryEntries => Set<QuotaHistoryEntry>();
     public DbSet<TenantAuditEntry> TenantAuditEntries => Set<TenantAuditEntry>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
     public DbSet<ImportDraft> ImportDrafts => Set<ImportDraft>();
