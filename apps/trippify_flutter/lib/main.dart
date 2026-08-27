@@ -3,35 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api_client.dart';
-
-final ThemeData _appTheme = ThemeData(
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6750A4),
-    brightness: Brightness.light,
-  ),
-  useMaterial3: true,
-  appBarTheme: const AppBarTheme(
-    centerTitle: true,
-    elevation: 2,
-  ),
-  cardTheme: CardThemeData(
-    elevation: 3,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-  ),
-  filledButtonTheme: FilledButtonThemeData(
-    style: FilledButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-    ),
-  ),
-  textButtonTheme: TextButtonThemeData(
-    style: TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      textStyle: const TextStyle(fontSize: 16),
-    ),
-  ),
-);
+import 'design/states.dart';
+import 'design/theme.dart';
 
 void main() => runApp(
   TrippifyApp(
@@ -52,7 +25,9 @@ class TrippifyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Trippify',
-    theme: _appTheme,
+    theme: lightTheme,
+    darkTheme: darkTheme,
+    themeMode: ThemeMode.system,
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('en'), Locale('zh')],
     routes: {
@@ -141,57 +116,66 @@ class _SystemScreenState extends State<SystemScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Trippify'),
-      elevation: 2,
-      actions: [
-        if (_userSummary != null)
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-            onPressed: () async {
-              await widget.api.login('dummy', 'dummy');
-              if (mounted) setState(() {});
-            },
-          ),
-      ],
-    ),
-    body: _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _userSummary == null
-            ? _buildAnonymousHome()
-            : _buildAuthenticatedHome(context),
-  );
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Trippify'),
+        elevation: 2,
+        actions: [
+          if (_userSummary != null)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sign out',
+              onPressed: () async {
+                await widget.api.login('dummy', 'dummy');
+                if (mounted) setState(() {});
+              },
+            ),
+        ],
+      ),
+      body: _isLoading
+          ? const LoadingState()
+          : _userSummary == null
+              ? _buildAnonymousHome(context)
+              : _buildAuthenticatedHome(context),
+    );
+  }
 
-  Widget _buildAnonymousHome() => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.person_outline, size: 64, color: Colors.grey),
-        const SizedBox(height: 16),
-        const Text(
-          'Welcome to Trippify',
-          style: TextStyle(fontSize: 24, color: Colors.grey),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Please sign in to access your home screen',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: () => Navigator.pushNamed(context, '/sign-in'),
-          child: const Text('Sign in'),
-        ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: () => Navigator.pushNamed(context, '/register'),
-          child: const Text('Create account'),
-        ),
-      ],
-    ),
-  );
+  Widget _buildAnonymousHome(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_outline, size: 64, color: colorScheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(
+            'Welcome to Trippify',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Please sign in to access your home screen',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () => Navigator.pushNamed(context, '/sign-in'),
+            child: const Text('Sign in'),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () => Navigator.pushNamed(context, '/register'),
+            child: const Text('Create account'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildAuthenticatedHome(BuildContext context) => SingleChildScrollView(
     padding: const EdgeInsets.all(24),
@@ -199,106 +183,114 @@ class _SystemScreenState extends State<SystemScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
-        _buildHeader(),
+        _buildHeader(context),
         const SizedBox(height: 32),
-        _buildSummaryCard(),
+        _buildSummaryCard(context),
         const SizedBox(height: 32),
         _buildQuickActions(context),
       ],
     ),
   );
 
-  Widget _buildHeader() => Row(
-    children: [
-      CircleAvatar(
-        backgroundColor: Color(0xFF6750A4),
-        child: Text(
-          _userSummary!.displayName.isNotEmpty
-              ? _userSummary!.displayName[0].toUpperCase()
-              : 'U',
-          style: const TextStyle(color: Colors.white, fontSize: 20),
+  Widget _buildHeader(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: colorScheme.primary,
+          radius: 32,
+          child: Text(
+            _userSummary!.displayName.isNotEmpty
+                ? _userSummary!.displayName[0].toUpperCase()
+                : 'U',
+            style: TextStyle(color: colorScheme.onPrimary, fontSize: 20),
+          ),
         ),
-        radius: 32,
-      ),
-      const SizedBox(width: 16),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _userSummary!.displayName,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF6750A4),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _userSummary!.displayName,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _userSummary!.accountStatus,
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-        ],
-      ),
-    ],
-  );
+            const SizedBox(height: 4),
+            Text(
+              _userSummary!.accountStatus,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
-  Widget _buildSummaryCard() => Card(
-    margin: const EdgeInsets.only(bottom: 24),
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Account Summary',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF6750A4),
+  Widget _buildSummaryCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 24),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Account Summary',
+              style: theme.textTheme.titleLarge?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Email:', style: TextStyle(fontSize: 14)),
-              Text(
-                _userSummary!.email,
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Creator:', style: TextStyle(fontSize: 14)),
-              Text(
-                _userSummary!.isCreator ? 'Yes' : 'No',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: _userSummary!.isCreator ? Color(0xFF6750A4) : Colors.grey,
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Email:'),
+                Text(
+                  _userSummary!.email,
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Roles:', style: TextStyle(fontSize: 14)),
-              Text(
-                _userSummary!.roles.isEmpty
-                    ? 'None'
-                    : _userSummary!.roles.join(', '),
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Creator:'),
+                Text(
+                  _userSummary!.isCreator ? 'Yes' : 'No',
+                  style: TextStyle(
+                    color: _userSummary!.isCreator
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Roles:'),
+                Text(
+                  _userSummary!.roles.isEmpty
+                      ? 'None'
+                      : _userSummary!.roles.join(', '),
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _buildQuickActions(BuildContext context) => Wrap(
     spacing: 12,
