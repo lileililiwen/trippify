@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api_client.dart';
 import 'design/states.dart';
 import 'design/theme.dart';
 import 'onboarding/registration_confirmation_screen.dart';
+import 'session_controller.dart';
 import 'shell/signed_in_shell.dart';
 
 /// A section title that announces itself as a header to assistive tech.
@@ -34,9 +34,22 @@ void main() => runApp(
   ),
 );
 
-class TrippifyApp extends StatelessWidget {
+class TrippifyApp extends StatefulWidget {
   const TrippifyApp({super.key, required this.api});
   final AppApi api;
+  @override
+  State<TrippifyApp> createState() => _TrippifyAppState();
+}
+
+class _TrippifyAppState extends State<TrippifyApp> {
+  late final SessionController session = SessionController(widget.api);
+
+  @override
+  void dispose() {
+    session.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Trippify',
@@ -46,53 +59,59 @@ class TrippifyApp extends StatelessWidget {
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('en'), Locale('zh')],
     routes: {
-      '/': (_) => SystemScreen(api: api),
-      '/sign-in': (_) => SignInScreen(api: api),
-      '/register': (_) => RegistrationScreen(api: api),
+      '/': (_) => SystemScreen(api: widget.api, session: session),
+      '/sign-in': (_) => SignInScreen(api: widget.api),
+      '/register': (_) => RegistrationScreen(api: widget.api),
       '/register/done': (_) => RegistrationConfirmationScreen(
-        api: api,
+        api: widget.api,
         email: _lastRegisteredEmail,
       ),
       '/profile': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.home,
-        child: ProfileScreen(api: api),
+        child: ProfileScreen(api: widget.api),
       ),
       '/creator/enroll': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.library,
-        child: CreatorEnrollmentScreen(api: api),
+        child: CreatorEnrollmentScreen(api: widget.api),
       ),
-      '/creator': (_) => PublicCreatorScreen(api: api),
+      '/creator': (_) => PublicCreatorScreen(api: widget.api),
       '/guides': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.create,
-        child: GuideWorkspaceScreen(api: api),
+        child: GuideWorkspaceScreen(api: widget.api),
       ),
       '/planning': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.plan,
-        child: PlanningScreen(api: api),
+        child: PlanningScreen(api: widget.api),
       ),
       '/discover': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.discover,
-        child: DiscoveryScreen(api: api),
+        child: DiscoveryScreen(api: widget.api),
       ),
       '/library': (_) => _ShellRoute(
-        api: api,
+        api: widget.api,
+        session: session,
         destination: SignedInDestination.library,
-        child: LibraryScreen(api: api),
+        child: LibraryScreen(api: widget.api),
       ),
-      '/creator/dashboard': (_) => CreatorDashboardScreen(api: api),
-      '/admin/operations': (_) => AdminOperationsScreen(api: api),
-      '/notifications': (_) => NotificationsScreen(api: api),
-      '/notification-preferences': (_) => NotificationPreferencesScreen(api: api),
-      '/plugins': (_) => PluginCatalogScreen(api: api),
-      '/tenant': (_) => TenantDashboardScreen(api: api),
-      '/assisted-import': (_) => AssistedImportScreen(api: api),
-      '/license-panel': (_) => LicensePanelScreen(api: api),
-      '/system': (_) => SystemStatusScreen(api: api),
+      '/creator/dashboard': (_) => CreatorDashboardScreen(api: widget.api),
+      '/admin/operations': (_) => AdminOperationsScreen(api: widget.api),
+      '/notifications': (_) => NotificationsScreen(api: widget.api),
+      '/notification-preferences': (_) => NotificationPreferencesScreen(api: widget.api),
+      '/plugins': (_) => PluginCatalogScreen(api: widget.api),
+      '/tenant': (_) => TenantDashboardScreen(api: widget.api),
+      '/assisted-import': (_) => AssistedImportScreen(api: widget.api),
+      '/license-panel': (_) => LicensePanelScreen(api: widget.api),
+      '/system': (_) => SystemStatusScreen(api: widget.api),
     },
   );
 }
@@ -102,10 +121,12 @@ class TrippifyApp extends StatelessWidget {
 class _ShellRoute extends StatelessWidget {
   const _ShellRoute({
     required this.api,
+    required this.session,
     required this.destination,
     required this.child,
   });
   final AppApi api;
+  final SessionController session;
   final SignedInDestination destination;
   final Widget child;
 
@@ -113,6 +134,7 @@ class _ShellRoute extends StatelessWidget {
   Widget build(BuildContext context) {
     return SignedInShell(
       api: api,
+      session: session,
       current: destination,
       onNavigate: (d) {
         switch (d) {
@@ -129,68 +151,41 @@ class _ShellRoute extends StatelessWidget {
         }
       },
       child: child,
+      onSignedOut: () => Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false),
     );
   }
 }
 
 class SystemScreen extends StatefulWidget {
-  const SystemScreen({super.key, required this.api});
+  const SystemScreen({super.key, required this.api, required this.session});
   final AppApi api;
+  final SessionController session;
   @override
   State<SystemScreen> createState() => _SystemScreenState();
 }
 
 class _SystemScreenState extends State<SystemScreen> {
-  late ValueListenable<String?> _tokens;
   MySummary? _userSummary;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _tokens = widget.api.tokens;
-    _loadUserSummary();
+    widget.session.addListener(_syncSession);
+    _syncSession();
   }
 
-  Future<void> _loadUserSummary() async {
-    final token = widget.api.tokens.value;
-    if (token != null && token.isNotEmpty) {
-      setState(() => _isLoading = true);
-      try {
-        final summary = await widget.api.getMySummary();
-        if (mounted) {
-          setState(() {
-            _userSummary = summary;
-            _isLoading = false;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _userSummary = null;
-          });
-        }
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _userSummary = null;
-        });
-      }
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _tokens.addListener(_loadUserSummary);
+  void _syncSession() {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = widget.session.state.phase == SessionPhase.loading;
+      _userSummary = widget.session.state.summary;
+    });
   }
 
   @override
   void dispose() {
-    _tokens.removeListener(_loadUserSummary);
+    widget.session.removeListener(_syncSession);
     super.dispose();
   }
 
@@ -206,8 +201,9 @@ class _SystemScreenState extends State<SystemScreen> {
               icon: const Icon(Icons.logout),
               tooltip: 'Sign out',
               onPressed: () async {
-                await widget.api.login('dummy', 'dummy');
-                if (mounted) setState(() {});
+                final navigator = Navigator.of(context);
+                await widget.session.signOut();
+                if (mounted) navigator.pushNamedAndRemoveUntil('/', (_) => false);
               },
             ),
         ],
@@ -226,6 +222,13 @@ class _SystemScreenState extends State<SystemScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          if (widget.session.state.notice != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: Text(widget.session.state.notice!, textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 16),
+          ],
           Icon(Icons.person_outline, size: 64, color: colorScheme.onSurfaceVariant),
           const SizedBox(height: 16),
           Text(

@@ -22,6 +22,8 @@ class FakeApi implements AppApi {
     this.initialToken,
     this.startLoggedIn = true,
     this.loginShouldFail = false,
+    this.logoutError,
+    this.summaryError,
   }) {
     if (startLoggedIn) {
       _tokens.writeSync(initialToken ?? 'fake-token');
@@ -40,6 +42,9 @@ class FakeApi implements AppApi {
   String? initialToken;
   final bool startLoggedIn;
   bool loginShouldFail;
+  final Object? logoutError;
+  final Object? summaryError;
+  int logoutCalls = 0;
   final MemoryTokenStore _tokens = MemoryTokenStore();
 
   @override
@@ -430,7 +435,9 @@ class FakeApi implements AppApi {
     return result;
   }
   @override
-  Future<MySummary> getMySummary() async => summary ?? const MySummary(
+  Future<MySummary> getMySummary() async {
+    if (summaryError != null) throw summaryError!;
+    return summary ?? const MySummary(
         'user@example.com',
         'Traveler',
         null,
@@ -439,9 +446,15 @@ class FakeApi implements AppApi {
         'Active',
         true,
       );
+  }
   @override
   Future<void> logout() async {
-    await _tokens.write(null);
+    logoutCalls++;
+    try {
+      if (logoutError != null) throw logoutError!;
+    } finally {
+      await _tokens.write(null);
+    }
   }
   @override
   Future<void> resendVerification() async {}

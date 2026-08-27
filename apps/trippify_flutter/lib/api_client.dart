@@ -1079,12 +1079,15 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> logout() async {
+    Object? failure;
     try {
       await _json('POST', '/api/v1/auth/logout', null);
-    } catch (_) {
-      // best-effort: always clear locally so the home reverts to anonymous
+    } catch (error) {
+      failure = error;
+    } finally {
+      await _tokens.write(null);
     }
-    await _tokens.write(null);
+    if (failure != null) throw failure;
   }
 
   @override
@@ -2447,6 +2450,7 @@ class ApiClient implements AppApi {
       _ => throw ArgumentError.value(method),
     };
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401 && token != null) await _tokens.write(null);
       throw ApiException(response.statusCode, _extractError(response.body));
     }
     if (response.body.isEmpty) return <String, dynamic>{};

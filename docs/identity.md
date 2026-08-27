@@ -40,3 +40,7 @@ Account and creator status changes require the `Administrator` role, a reason, a
 ## Retention
 
 Expired revoked-token digests must be removed by scheduled maintenance once background jobs are enabled. Audit entries follow the deployment's legal retention policy.
+
+## Flutter session controls
+
+The Flutter app owns one `SessionController` for the app lifetime. It registers one token listener, removes it on disposal, and shares the controller with authenticated shells. Sign-out calls the server logout endpoint when reachable, but `ApiClient.logout` clears secure credentials in `finally`; an offline or already-expired response therefore cannot leave a private session cached. The controller replaces navigation history with the anonymous route and announces whether server revocation was confirmed. Protected-request `401` responses clear the token once and transition to reauthentication without retry loops. Authenticated shells expose a labelled 56px sign-out control and do not permit back navigation into the cleared route stack.

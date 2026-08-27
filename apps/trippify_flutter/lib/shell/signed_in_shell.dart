@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
+import '../session_controller.dart';
 
 /// Signed-in app shell. Renders a [Scaffold] with a [NavigationBar] that
 /// adapts to the user's role: 4 destinations for non-creators (home,
@@ -15,6 +16,8 @@ class SignedInShell extends StatefulWidget {
     required this.api,
     required this.current,
     required this.onNavigate,
+    this.session,
+    this.onSignedOut,
     this.child,
     this.initialSummary,
   });
@@ -22,6 +25,8 @@ class SignedInShell extends StatefulWidget {
   final AppApi api;
   final SignedInDestination current;
   final ValueChanged<SignedInDestination> onNavigate;
+  final SessionController? session;
+  final VoidCallback? onSignedOut;
 
   /// Optional override for the body. When null, the shell renders a
   /// placeholder for the selected destination; screens wired via
@@ -40,12 +45,15 @@ class SignedInShell extends StatefulWidget {
 enum SignedInDestination { home, discover, library, plan, create }
 
 class _SignedInShellState extends State<SignedInShell> {
+  late final SessionController _session =
+      widget.session ?? SessionController(widget.api);
   MySummary? _summary;
   bool _summaryResolved = false;
 
   @override
   void initState() {
     super.initState();
+    _session.addListener(_sessionChanged);
     // If a summary was passed in (e.g. from a parent that already
     // resolved the session), adopt it immediately so the first build
     // reflects the right destination count.
@@ -59,6 +67,28 @@ class _SignedInShellState extends State<SignedInShell> {
     // mount would race the first build.
     if (pending != null) return;
     _loadSummary();
+  }
+
+  void _sessionChanged() {
+    if (!mounted) return;
+    final state = _session.state;
+    if (state.phase == SessionPhase.anonymous) {
+      widget.onSignedOut?.call();
+      return;
+    }
+    if (state.summary != null) {
+      setState(() {
+        _summary = state.summary;
+        _summaryResolved = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _session.removeListener(_sessionChanged);
+    if (widget.session == null) _session.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSummary() async {
@@ -142,6 +172,13 @@ class _SignedInShellState extends State<SignedInShell> {
 
     return Scaffold(
       body: widget.child ?? const SizedBox.shrink(),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Sign out',
+        onPressed: () async {
+          await _session.signOut();
+        },
+        child: const Icon(Icons.logout),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex < 0 ? 0 : currentIndex,
         destinations: destinations.map((entry) => entry.navigation).toList(),
