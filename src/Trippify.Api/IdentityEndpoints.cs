@@ -35,6 +35,7 @@ public static class IdentityEndpoints
         app.MapPost("/api/v1/creators/enroll", EnrollCreator).RequireAuthorization();
         app.MapGet("/api/v1/creator/workspace", GetCreatorWorkspace).RequireAuthorization();
         app.MapGet("/api/v1/creators/{slug}", GetCreator);
+        app.MapGet("/api/v1/me/summary", GetMySummary).RequireAuthorization();
         app.MapPut("/api/v1/admin/users/{userId:guid}/status", SetAccountStatus).RequireAuthorization(p => p.RequireRole("Administrator"));
         app.MapPut("/api/v1/admin/creators/{userId:guid}/status", SetCreatorStatus).RequireAuthorization(p => p.RequireRole("Administrator"));
     }
@@ -48,7 +49,16 @@ public static class IdentityEndpoints
         if (!result.Succeeded) return Results.ValidationProblem(result.Errors.GroupBy(x => x.Code).ToDictionary(x => x.Key, x => x.Select(y => y.Description).ToArray()));
         var code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await users.GenerateEmailConfirmationTokenAsync(user)));
         var link = $"{context.Request.Scheme}://{context.Request.Host}/api/v1/auth/confirm-email?userId={user.Id}&code={code}";
-        await email.SendConfirmationLinkAsync(user, normalized, link);
+        try
+        {
+            await email.SendConfirmationLinkAsync(user, normalized, link);
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't fail registration
+            // In production, you would use a proper logging framework
+            Console.WriteLine($"Failed to send confirmation email to {normalized}: {ex.Message}");
+        }
         return Results.Ok();
     }
 
@@ -114,6 +124,23 @@ public static class IdentityEndpoints
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == id);
         var profile = await db.UserProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == id);
         return Results.Ok(new PrivateProfile(user.Email!, profile?.DisplayName ?? string.Empty, profile?.AvatarUrl, profile?.Locale, user.EmailConfirmed, user.Status.ToString()));
+    }
+
+    private static async Task<IResult> GetMySummary(ClaimsPrincipal principal, AppDbContext db)
+    {
+        var id = CurrentUserId(principal);
+        var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == id);
+        var profile = await db.UserProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == id);
+        var roles = principal.FindAll(ClaimTypes.Role).Select(c => c.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var isCreator = await db.CreatorProfiles.AsNoTracking().AnyAsync(x => x.UserId == id && x.Status == CreatorStatus.Active);
+        return Results.Ok(new MySummaryResponse(
+            user.Email!,
+            profile?.DisplayName ?? string.Empty,
+            profile?.AvatarUrl,
+            roles,
+            isCreator,
+            user.Status.ToString(),
+            user.EmailConfirmed));
     }
 
     private static async Task<IResult> UpdateMyProfile(ProfileRequest request, ClaimsPrincipal principal, AppDbContext db)
@@ -200,3 +227,5 @@ public sealed record LoginRequest(string Email, string Password);
 public sealed record RefreshRequest(string RefreshToken);
 public sealed record EmailRequest(string Email);
 public sealed record ResetPasswordRequest(string Email, string Code, string NewPassword);
+
+public sealed record MySummaryResponse(string Email, string DisplayName, string? AvatarUrl, string[] Roles, bool IsCreator, string AccountStatus, [property: System.Text.Json.Serialization.JsonPropertyName("emailConfirmed")] bool EmailConfirmed);
