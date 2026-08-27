@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Trippify.Application;
 
 namespace Trippify.Infrastructure;
@@ -91,8 +92,22 @@ public sealed class IdentityAuditEntry { public Guid Id { get; init; } public Gu
 public sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }
 public sealed class LocalProviders : IObjectStorage, IEmailSender, IMapProvider, IPaymentGateway, IAiAssistant, IBackgroundJobQueue
 {
+    private readonly IEmailSender? _resend;
+
+    public LocalProviders(IConfiguration configuration)
+    {
+        var resendKey = configuration["RESEND_API_KEY"];
+        if (!string.IsNullOrEmpty(resendKey))
+        {
+            _resend = new ResendEmailSender(resendKey);
+        }
+    }
+
     public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => Task.FromResult(new Uri("file:///tmp/trippify/" + Uri.EscapeDataString(key)));
-    public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SendAsync(string recipient, string subject, string body, CancellationToken cancellationToken)
+    {
+        return _resend?.SendAsync(recipient, subject, body, cancellationToken) ?? Task.CompletedTask;
+    }
     public Task<string?> GeocodeAsync(string address, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<string> CreateCheckoutAsync(long minorUnits, string currency, CancellationToken cancellationToken) => throw new NotSupportedException("Payments are disabled in local mode.");
     public Task<string> AssistAsync(string input, CancellationToken cancellationToken) => Task.FromResult(input);
