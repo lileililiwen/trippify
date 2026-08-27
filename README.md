@@ -23,3 +23,4 @@ Verified trip evidence, retention, badge lifecycle, and opt-in coarse actual met
 Creator sales/income dashboards and audited role-scoped administration are documented in [`docs/operations.md`](docs/operations.md).
 Creator follows and preference-aware notifications are documented in [`docs/notifications.md`](docs/notifications.md).
 Immutable releases, changelogs, buyer update notifications, and freshness indicators are documented in [`docs/versioning.md`](docs/versioning.md).
+Integration plugin system (manifests, signatures, scope, lifecycle, audit) is documented in [`docs/plugins.md`](docs/plugins.md).

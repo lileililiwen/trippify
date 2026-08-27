@@ -40,6 +40,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<GuideRelease> GuideReleases => Set<GuideRelease>();
+    public DbSet<Plugin> Plugins => Set<Plugin>();
+    public DbSet<PluginInstallation> PluginInstallations => Set<PluginInstallation>();
+    public DbSet<PluginPermissionGrant> PluginPermissionGrants => Set<PluginPermissionGrant>();
+    public DbSet<PluginAuditEntry> PluginAuditEntries => Set<PluginAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

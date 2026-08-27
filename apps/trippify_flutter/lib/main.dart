@@ -39,6 +39,7 @@ class TrippifyApp extends StatelessWidget {
       '/admin/operations': (_) => AdminOperationsScreen(api: api),
       '/notifications': (_) => NotificationsScreen(api: api),
       '/notification-preferences': (_) => NotificationPreferencesScreen(api: api),
+      '/plugins': (_) => PluginCatalogScreen(api: api),
     },
   );
 }
@@ -162,6 +163,15 @@ TextButton(
               ),
             ),
             child: const Text('Notification preferences'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => PluginCatalogScreen(api: widget.api),
+              ),
+            ),
+            child: const Text('Plugin catalog'),
           ),
               ],
             );
@@ -908,6 +918,174 @@ class LibraryScreen extends StatefulWidget {
   final AppApi api;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class PluginCatalogScreen extends StatefulWidget {
+  const PluginCatalogScreen({super.key, required this.api});
+  final AppApi api;
+  @override
+  State<PluginCatalogScreen> createState() => _PluginCatalogScreenState();
+}
+
+class _PluginCatalogScreenState extends State<PluginCatalogScreen> {
+  late Future<PluginList> catalog;
+  late Future<List<PluginInstallation>> installations;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    final pendingCatalog = widget.api.listPlugins();
+    final pendingInstallations = widget.api.listMyPluginInstallations();
+    setState(() {
+      catalog = pendingCatalog;
+      installations = pendingInstallations;
+    });
+  }
+
+  Future<void> install(PluginSummary plugin) async {
+    try {
+      await widget.api.installPlugin(plugin.id, ['ReadGuides']);
+      setState(() => status = 'Plugin installed.');
+      _refresh();
+    } catch (_) {
+      setState(() => status = 'Cannot install plugin.');
+    }
+  }
+
+  Future<void> toggle(PluginInstallation installation) async {
+    try {
+      if (installation.lifecycle == 'Disabled' || installation.lifecycle == 'Installed') {
+        await widget.api.enablePlugin(installation.pluginId);
+      } else {
+        await widget.api.disablePlugin(installation.pluginId);
+      }
+      setState(() => status = 'Lifecycle updated.');
+      _refresh();
+    } catch (_) {
+      setState(() => status = 'Cannot update plugin.');
+    }
+  }
+
+  Future<void> uninstall(PluginInstallation installation) async {
+    try {
+      await widget.api.uninstallPlugin(installation.pluginId);
+      setState(() => status = 'Plugin uninstalled.');
+      _refresh();
+    } catch (_) {
+      setState(() => status = 'Cannot uninstall plugin.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Plugin catalog')),
+      body: RefreshIndicator(
+        onRefresh: () async => _refresh(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('My installations',
+                style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<List<PluginInstallation>>(
+              future: installations,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Installations unavailable.'),
+                  );
+                }
+                final list = snapshot.data ?? const [];
+                if (list.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No installations yet.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final i in list)
+                      ListTile(
+                        title: Text(i.pluginDisplayName),
+                        subtitle: Text('${i.lifecycle} · ${i.scopes.join(',')}'),
+                        trailing: Wrap(
+                          spacing: 4,
+                          children: [
+                            OutlinedButton(
+                              onPressed: () => toggle(i),
+                              child: Text(i.lifecycle == 'Enabled'
+                                  ? 'Disable'
+                                  : 'Enable'),
+                            ),
+                            TextButton(
+                              onPressed: () => uninstall(i),
+                              child: const Text('Remove'),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Catalog', style: Theme.of(context).textTheme.titleMedium),
+            FutureBuilder<PluginList>(
+              future: catalog,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Catalog unavailable.'),
+                  );
+                }
+                final items = snapshot.data!.items;
+                if (items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No plugins available yet.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final p in items)
+                      ListTile(
+                        title: Text(p.displayName),
+                        subtitle: Text('${p.publisher} · v${p.version}'),
+                        trailing: FilledButton(
+                          onPressed: () => install(p),
+                          child: const Text('Install'),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            if (status != null)
+              Semantics(liveRegion: true, child: Text(status!)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class CreatorDashboardScreen extends StatefulWidget {

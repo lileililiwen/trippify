@@ -109,6 +109,13 @@ abstract interface class AppApi {
   Future<GuideRelease> getGuideRelease(String releaseId);
   Future<GuideFreshness> getGuideFreshness(String guideId);
   Future<GuideRelease> publishGuideRelease(String guideId, String changelog);
+  Future<PluginList> listPlugins({int? limit});
+  Future<PluginSummary> getPlugin(String pluginId);
+  Future<List<PluginInstallation>> listMyPluginInstallations();
+  Future<void> installPlugin(String pluginId, List<String> scopes);
+  Future<void> enablePlugin(String pluginId);
+  Future<void> disablePlugin(String pluginId);
+  Future<void> uninstallPlugin(String pluginId);
 }
 
 class GuideSummary {
@@ -630,6 +637,41 @@ class GuideFreshness {
   final int latestVersion;
   final DateTime? latestPublishedAt;
   final int? daysSinceLatest;
+}
+
+class PluginSummary {
+  const PluginSummary(
+    this.id,
+    this.slug,
+    this.displayName,
+    this.version,
+    this.publisher,
+    this.status,
+    this.createdAt,
+  );
+  final String id, slug, displayName, version, publisher, status;
+  final DateTime createdAt;
+}
+
+class PluginList {
+  const PluginList(this.total, this.items);
+  final int total;
+  final List<PluginSummary> items;
+}
+
+class PluginInstallation {
+  const PluginInstallation(
+    this.id,
+    this.pluginId,
+    this.pluginSlug,
+    this.pluginDisplayName,
+    this.lifecycle,
+    this.installedAt,
+    this.scopes,
+  );
+  final String id, pluginId, pluginSlug, pluginDisplayName, lifecycle;
+  final DateTime installedAt;
+  final List<String> scopes;
 }
 
 abstract interface class TokenStore {
@@ -1627,6 +1669,74 @@ class ApiClient implements AppApi {
       v['nodeSummary'] as String? ?? '',
     );
   }
+
+  @override
+  Future<PluginList> listPlugins({int? limit}) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final path = '/api/v1/plugins${params.isEmpty ? '' : '?$params'}';
+    final v = await _json('GET', path, null);
+    return PluginList(
+      v['total'] as int,
+      ((v['items'] as List?) ?? const [])
+          .map((item) => item as Map<String, dynamic>)
+          .map(_toPlugin)
+          .toList(),
+    );
+  }
+
+  @override
+  Future<PluginSummary> getPlugin(String pluginId) async {
+    final v = await _json('GET', '/api/v1/plugins/$pluginId', null);
+    return _toPlugin(v);
+  }
+
+  @override
+  Future<List<PluginInstallation>> listMyPluginInstallations() async {
+    final v = await _json('GET', '/api/v1/me/plugins/installations', null);
+    return (v as List)
+        .map((item) => item as Map<String, dynamic>)
+        .map(_toInstallation)
+        .toList();
+  }
+
+  @override
+  Future<void> installPlugin(String pluginId, List<String> scopes) =>
+      _json('POST', '/api/v1/me/plugins/$pluginId/install', {
+        'scopes': scopes,
+      });
+
+  @override
+  Future<void> enablePlugin(String pluginId) =>
+      _request('POST', '/api/v1/me/plugins/$pluginId/enable', null);
+
+  @override
+  Future<void> disablePlugin(String pluginId) =>
+      _request('POST', '/api/v1/me/plugins/$pluginId/disable', null);
+
+  @override
+  Future<void> uninstallPlugin(String pluginId) =>
+      _request('DELETE', '/api/v1/me/plugins/$pluginId', null);
+
+  static PluginSummary _toPlugin(Map<String, dynamic> v) => PluginSummary(
+        v['id'] as String,
+        v['slug'] as String,
+        v['displayName'] as String,
+        v['version'] as String,
+        v['publisher'] as String,
+        v['status'] as String,
+        DateTime.parse(v['createdAt'] as String),
+      );
+
+  static PluginInstallation _toInstallation(Map<String, dynamic> v) =>
+      PluginInstallation(
+        v['id'] as String,
+        v['pluginId'] as String,
+        v['pluginSlug'] as String,
+        v['pluginDisplayName'] as String,
+        v['lifecycle'] as String,
+        DateTime.parse(v['installedAt'] as String),
+        ((v['scopes'] as List?) ?? const []).cast<String>(),
+      );
 
   Future<Map<String, dynamic>> _json(
     String method,

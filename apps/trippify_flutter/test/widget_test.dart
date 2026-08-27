@@ -311,6 +311,22 @@ class FakeApi implements AppApi {
         DateTime(2026, 1, 1),
         '',
       );
+  @override
+  Future<PluginList> listPlugins({int? limit}) async =>
+      const PluginList(0, []);
+  @override
+  Future<PluginSummary> getPlugin(String pluginId) async =>
+      PluginSummary(pluginId, 'demo', 'Demo', '1.0.0', 'Trippify', 'Approved', DateTime(2026, 1, 1));
+  @override
+  Future<List<PluginInstallation>> listMyPluginInstallations() async => const [];
+  @override
+  Future<void> installPlugin(String pluginId, List<String> scopes) async {}
+  @override
+  Future<void> enablePlugin(String pluginId) async {}
+  @override
+  Future<void> disablePlugin(String pluginId) async {}
+  @override
+  Future<void> uninstallPlugin(String pluginId) async {}
 
   static NotificationPreferences _defaultPrefs() => NotificationPreferences(
         emailEnabled: true,
@@ -899,5 +915,21 @@ void main() {
     }
     expect(find.text('Release history'), findsOneWidget);
     expect(find.text('No releases yet.'), findsAtLeastNWidgets(1));
+  });
+  testWidgets('plugin catalog screen renders empty installable and installations', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(Future.value(const SystemInfo('Trippify', 'v1'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plugin catalog'));
+    await tester.pumpAndSettle();
+    expect(find.text('Plugin catalog'), findsOneWidget);
+    expect(find.text('My installations'), findsOneWidget);
+    expect(find.text('No installations yet.'), findsOneWidget);
+    expect(find.text('No plugins available yet.'), findsOneWidget);
   });
 }
