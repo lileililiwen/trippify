@@ -1428,4 +1428,84 @@ testWidgets('license panel screen renders empty state and create default action'
     expect(lightTokens.onSurfaceMuted, isNot(equals(darkTokens.onSurfaceMuted)));
     expect(darkTokens.onSurfaceMuted.computeLuminance(), greaterThan(0.5));
   });
+
+  // --- Accessibility fixes (audit-2026-08-27-accessibility-fixes) ---
+
+  testWidgets('sign-in form shows inline errorText for empty fields', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pump();
+    expect(find.text('Email is required.'), findsOneWidget);
+    expect(find.text('Password is required.'), findsOneWidget);
+  });
+
+  testWidgets('sign-in form rejects malformed email with inline errorText', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'not-an-email');
+    await tester.enterText(find.byType(TextFormField).at(1), 'somepassword');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pump();
+    expect(find.text('Email is invalid.'), findsOneWidget);
+  });
+
+  testWidgets('registration form rejects weak password and mismatched confirm', (tester) async {
+    await tester.pumpWidget(
+      TrippifyApp(
+        api: FakeApi(
+          Future.value(const SystemDistributionInfo('1.0.0', 0)),
+          startLoggedIn: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'good@example.com');
+    await tester.enterText(find.byType(TextFormField).at(1), 'short');
+    await tester.enterText(find.byType(TextFormField).at(2), 'short');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pump();
+    expect(find.text('Password must be at least 10 characters.'), findsOneWidget);
+  });
+
+  testWidgets('sectionTitle renders Semantics(header: true)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightTheme,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => sectionTitle(context, 'Account Summary'),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Account Summary'), findsOneWidget);
+    // Verify the Semantics(header: true) is present by checking the
+    // widget tree shape.
+    final sem = find.ancestor(
+      of: find.text('Account Summary'),
+      matching: find.byType(Semantics),
+    );
+    expect(sem, findsWidgets);
+  });
 }

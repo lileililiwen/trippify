@@ -6,6 +6,14 @@ import 'api_client.dart';
 import 'design/states.dart';
 import 'design/theme.dart';
 
+/// A section title that announces itself as a header to assistive tech.
+Widget sectionTitle(BuildContext context, String text, {TextStyle? style}) {
+  return Semantics(
+    header: true,
+    child: Text(text, style: style ?? Theme.of(context).textTheme.titleMedium),
+  );
+}
+
 void main() => runApp(
   TrippifyApp(
     api: ApiClient(
@@ -915,7 +923,7 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                 ),
             ],
             const SizedBox(height: 16),
-            Text('Reviews', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Reviews'),
             if (data.unlocked)
               _ReviewSection(
                 api: widget.api,
@@ -925,14 +933,18 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                 }),
               ),
             const SizedBox(height: 16),
-            Text(
-              'Verified trips',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            sectionTitle(context, 'Verified trips'),
             _VerifiedTripsSection(api: widget.api, guideId: data.id, unlocked: data.unlocked, onSubmit: (message) => setState(() => status = message)),
             const SizedBox(height: 16),
-            Text('Release history', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Release history'),
             _ReleasesSection(api: widget.api, guideId: data.id),
+            const SizedBox(height: 16),
+            sectionTitle(context, 'Send feedback'),
+            _PublicFeedbackForm(
+              api: widget.api,
+              guideId: data.id,
+              onSubmitted: (message) => setState(() => status = message),
+            ),
           ],
         );
       },
@@ -976,7 +988,13 @@ class _ReleasesSectionState extends State<_ReleasesSection> {
             );
           }
           if (snapshot.hasError || !snapshot.hasData) {
-            return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: ErrorState(
+                message: 'Freshness data is unavailable.',
+                onRetry: _refresh,
+              ),
+            );
           }
           final value = snapshot.data!;
           final label = value.latestVersion == 0
@@ -1125,17 +1143,17 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('Version', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Version'),
             Text(info?.version ?? 'Unknown'),
             const SizedBox(height: 16),
-            Text('Migrations', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Migrations'),
             Text('Applied ${status?.appliedCount ?? 0} · Pending ${status?.pendingCount ?? 0}'),
             const SizedBox(height: 16),
             FilledButton(onPressed: _upgrade, child: const Text('Run upgrade')),
             const SizedBox(height: 8),
             OutlinedButton(onPressed: _backup, child: const Text('Capture backup')),
             const SizedBox(height: 16),
-            Text('Feature flags', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Feature flags'),
             if (flags.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(8),
@@ -1210,7 +1228,7 @@ class _LicensePanelScreenState extends State<LicensePanelScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('My policies', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'My policies'),
             if (policies.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
@@ -1313,7 +1331,7 @@ class _TenantDashboardScreenState extends State<TenantDashboardScreen> {
           Text(t.primaryDomain.isEmpty ? 'No custom domain' : t.primaryDomain),
           Text('Plan ${s.plan} (${s.status})'),
           const SizedBox(height: 16),
-          Text('Choose a plan', style: Theme.of(context).textTheme.titleMedium),
+          sectionTitle(context, 'Choose a plan'),
           Wrap(
             spacing: 8,
             children: [
@@ -1325,7 +1343,7 @@ class _TenantDashboardScreenState extends State<TenantDashboardScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Text('Quotas', style: Theme.of(context).textTheme.titleMedium),
+          sectionTitle(context, 'Quotas'),
           if (quotas.isEmpty)
             const Padding(
               padding: EdgeInsets.all(8),
@@ -1449,7 +1467,7 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Paste text', style: Theme.of(context).textTheme.titleMedium),
+          sectionTitle(context, 'Paste text'),
           TextField(
             controller: source,
             minLines: 3,
@@ -1458,14 +1476,14 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
           ),
           FilledButton(onPressed: _submitText, child: const Text('Submit text import')),
           const SizedBox(height: 16),
-          Text('Object-backed', style: Theme.of(context).textTheme.titleMedium),
+          sectionTitle(context, 'Object-backed'),
           TextField(
             controller: objectKey,
             decoration: const InputDecoration(labelText: 'Object key'),
           ),
           FilledButton(onPressed: _submitObject, child: const Text('Submit object import')),
           const SizedBox(height: 16),
-          Text('Quotas', style: Theme.of(context).textTheme.titleMedium),
+          sectionTitle(context, 'Quotas'),
           for (final q in quotas)
             ListTile(
               title: Text(q.metric),
@@ -1473,7 +1491,7 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
             ),
           const SizedBox(height: 16),
           if (draft != null) ...[
-            Text('Latest draft', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Latest draft'),
             Semantics(
               label: 'Draft title',
               child: Text(draft!.suggestedTitle),
@@ -1619,7 +1637,7 @@ class _PluginCatalogScreenState extends State<PluginCatalogScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Catalog', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Catalog'),
             FutureBuilder<PluginList>(
               future: catalog,
               builder: (context, snapshot) {
@@ -1702,7 +1720,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('Overview', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Overview'),
             FutureBuilder<CreatorDashboardOverview>(
               future: overview,
               builder: (context, snapshot) {
@@ -1757,7 +1775,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Reviews', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Reviews'),
             FutureBuilder<CreatorReviewSummary>(
               future: reviews,
               builder: (context, snapshot) {
@@ -1789,7 +1807,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Recent orders', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Recent orders'),
             FutureBuilder<CreatorOrdersResponse>(
               future: orders,
               builder: (context, snapshot) {
@@ -1867,7 +1885,7 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('Audit log', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Audit log'),
             FutureBuilder<AdminAuditResponse>(
               future: audit,
               builder: (context, snapshot) {
@@ -1903,7 +1921,7 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Users', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Users'),
             FutureBuilder<AdminUsersResponse>(
               future: users,
               builder: (context, snapshot) {
@@ -1938,7 +1956,7 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Creators', style: Theme.of(context).textTheme.titleMedium),
+            sectionTitle(context, 'Creators'),
             FutureBuilder<AdminCreatorsResponse>(
               future: creators,
               builder: (context, snapshot) {
@@ -2024,19 +2042,37 @@ class _ReviewSectionState extends State<_ReviewSection> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      TextField(
+      TextFormField(
         controller: body,
-        decoration: const InputDecoration(labelText: 'Your review'),
+        minLines: 4,
+        maxLines: 8,
+        maxLength: 4000,
+        decoration: const InputDecoration(
+          labelText: 'Your review',
+          helperText: '30–4000 characters',
+        ),
+        validator: (v) {
+          final value = (v ?? '').trim();
+          if (value.length < 30) {
+            return 'A review must be at least 30 characters.';
+          }
+          return null;
+        },
       ),
-      Row(
-        children: [
-          const Text('Rating: '),
-          for (var i = 1; i <= 5; i++)
-            IconButton(
-              icon: Icon(i <= rating ? Icons.star : Icons.star_border),
-              onPressed: () => setState(() => rating = i),
-            ),
-        ],
+      Semantics(
+        container: true,
+        label: 'Rating: $rating of 5',
+        child: Row(
+          children: [
+            const Text('Rating: '),
+            for (var i = 1; i <= 5; i++)
+              IconButton(
+                tooltip: 'Set rating to $i',
+                icon: Icon(i <= rating ? Icons.star : Icons.star_border),
+                onPressed: () => setState(() => rating = i),
+              ),
+          ],
+        ),
       ),
       FilledButton(
         onPressed: submit,
@@ -2053,7 +2089,15 @@ class _ReviewSectionState extends State<_ReviewSection> {
             );
           }
           if (snapshot.hasError) {
-            return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: ErrorState(
+                message: 'Reviews are unavailable right now.',
+                onRetry: () => setState(
+                  () => reviews = widget.api.listReviews(widget.guideId),
+                ),
+              ),
+            );
           }
           final items = snapshot.data!;
           if (items.isEmpty) {
@@ -2083,6 +2127,94 @@ class _ReviewSectionState extends State<_ReviewSection> {
         },
       ),
     ],
+  );
+}
+
+class _PublicFeedbackForm extends StatefulWidget {
+  const _PublicFeedbackForm({
+    required this.api,
+    required this.guideId,
+    required this.onSubmitted,
+  });
+  final AppApi api;
+  final String guideId;
+  final ValueChanged<String> onSubmitted;
+  @override
+  State<_PublicFeedbackForm> createState() => _PublicFeedbackFormState();
+}
+
+class _PublicFeedbackFormState extends State<_PublicFeedbackForm> {
+  final _formKey = GlobalKey<FormState>();
+  final body = TextEditingController();
+  String? status;
+  bool busy = false;
+
+  Future<void> submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      busy = true;
+      status = null;
+    });
+    try {
+      await widget.api.submitFeedback(widget.guideId, body.text.trim());
+      if (!mounted) return;
+      body.clear();
+      setState(() {
+        status = 'Feedback sent. Thank you.';
+        busy = false;
+      });
+      widget.onSubmitted('Feedback sent. Thank you.');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        status = 'Feedback is unavailable right now.';
+        busy = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    body.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Form(
+    key: _formKey,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: body,
+          minLines: 4,
+          maxLines: 8,
+          maxLength: 4000,
+          decoration: const InputDecoration(
+            labelText: 'Your feedback',
+            helperText: '30–4000 characters',
+          ),
+          validator: (v) {
+            final value = (v ?? '').trim();
+            if (value.length < 30) {
+              return 'Feedback must be at least 30 characters.';
+            }
+            return null;
+          },
+        ),
+        if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+        FilledButton(
+          onPressed: busy ? null : submit,
+          child: busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Send feedback'),
+        ),
+      ],
+    ),
   );
 }
 
@@ -2342,13 +2474,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Trips', style: Theme.of(context).textTheme.titleMedium),
+        sectionTitle(context, 'Trips'),
         _TripListSection(future: trips),
         const SizedBox(height: 16),
-        Text('Favorites', style: Theme.of(context).textTheme.titleMedium),
+        sectionTitle(context, 'Favorites'),
         _FavoriteSection(future: favorites),
         const SizedBox(height: 16),
-        Text('Owned guides', style: Theme.of(context).textTheme.titleMedium),
+        sectionTitle(context, 'Owned guides'),
         _EntitlementList(future: entitlements, api: widget.api),
       ],
     ),
@@ -2709,7 +2841,11 @@ class _NotificationPreferencesScreenState
       appBar: AppBar(
         title: const Text('Notification preferences'),
         actions: [
-          IconButton(onPressed: _save, icon: const Icon(Icons.save)),
+          IconButton(
+            tooltip: 'Save preferences',
+            onPressed: _save,
+            icon: const Icon(Icons.save),
+          ),
         ],
       ),
       body: ListView(
@@ -2760,19 +2896,13 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
+  final _formKey = GlobalKey<FormState>();
   final email = TextEditingController();
   final password = TextEditingController();
   final passwordConfirm = TextEditingController();
   String? status;
   Future<void> submit() async {
-    if (email.text.trim().isEmpty || password.text.length < 10) {
-      setState(() => status = 'Enter a valid email and strong password.');
-      return;
-    }
-    if (password.text != passwordConfirm.text) {
-      setState(() => status = 'Passwords do not match.');
-      return;
-    }
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     try {
       await widget.api.register(email.text.trim(), password.text);
       setState(() => status = 'Check your email to confirm your account.');
@@ -2784,30 +2914,57 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Create account')),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(labelText: 'Email'),
-        ),
-        TextField(
-          controller: password,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Password'),
-        ),
-        TextField(
-          controller: passwordConfirm,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Confirm Password'),
-        ),
-        if (status != null) Semantics(liveRegion: true, child: Text(status!)),
-        FilledButton(onPressed: submit, child: const Text('Create account')),
-      ],
+    body: Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          TextFormField(
+            controller: email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(labelText: 'Email'),
+            validator: (v) {
+              final value = (v ?? '').trim();
+              if (value.isEmpty) return 'Email is required.';
+              if (!_emailRe.hasMatch(value)) return 'Email is invalid.';
+              return null;
+            },
+          ),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: const InputDecoration(labelText: 'Password'),
+            validator: (v) {
+              if ((v ?? '').length < 10) {
+                return 'Password must be at least 10 characters.';
+              }
+              return null;
+            },
+          ),
+          TextFormField(
+            controller: passwordConfirm,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Confirm Password'),
+            validator: (v) {
+              if (v != password.text) return 'Passwords do not match.';
+              return null;
+            },
+          ),
+          if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+          FilledButton(onPressed: submit, child: const Text('Create account')),
+        ],
+      ),
     ),
   );
 }
+
+final RegExp _emailRe = RegExp(
+  r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+  r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
+  r'(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$',
+);
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key, required this.api});
@@ -2817,15 +2974,13 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _formKey = GlobalKey<FormState>();
   final email = TextEditingController();
   final password = TextEditingController();
   bool busy = false;
   String? error;
   Future<void> submit() async {
-    if (email.text.trim().isEmpty || password.text.length < 10) {
-      setState(() => error = 'Enter a valid email and password.');
-      return;
-    }
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
       busy = true;
       error = null;
@@ -2843,29 +2998,42 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Sign in')),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(labelText: 'Email'),
-        ),
-        TextField(
-          controller: password,
-          obscureText: true,
-          autofillHints: const [AutofillHints.password],
-          decoration: const InputDecoration(labelText: 'Password'),
-        ),
-        if (error != null) Semantics(liveRegion: true, child: Text(error!)),
-        FilledButton(
-          onPressed: busy ? null : submit,
-          child: busy
-              ? const CircularProgressIndicator()
-              : const Text('Sign in'),
-        ),
-      ],
+    body: Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          TextFormField(
+            controller: email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(labelText: 'Email'),
+            validator: (v) {
+              final value = (v ?? '').trim();
+              if (value.isEmpty) return 'Email is required.';
+              if (!_emailRe.hasMatch(value)) return 'Email is invalid.';
+              return null;
+            },
+          ),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofillHints: const [AutofillHints.password],
+            decoration: const InputDecoration(labelText: 'Password'),
+            validator: (v) {
+              if ((v ?? '').isEmpty) return 'Password is required.';
+              return null;
+            },
+          ),
+          if (error != null) Semantics(liveRegion: true, child: Text(error!)),
+          FilledButton(
+            onPressed: busy ? null : submit,
+            child: busy
+                ? const CircularProgressIndicator()
+                : const Text('Sign in'),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -2902,9 +3070,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             Text(s.data!.email),
             Text('Account: ${s.data!.status}'),
-            TextField(
+            TextFormField(
               controller: displayName,
-              decoration: const InputDecoration(labelText: 'Display name'),
+              maxLength: 80,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                helperText: 'Up to 80 characters',
+              ),
             ),
             FilledButton(
               onPressed: () async {
