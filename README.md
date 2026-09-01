@@ -96,6 +96,8 @@ Never enable or reuse these credentials in a deployed environment.
 
 Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, AI provider keys, and remote object-storage credentials through your secret store. Never commit secrets.
 
+The production startup validator (`RuntimeSecurityValidator`) refuses to boot when `Cors:AllowedOrigins` is empty, when `ObjectStorage__SignedUrlSecret` is the documented placeholder, or when `Payment__WebhookSecret`, `Payment__ApiKey`, `Ai__ApiKey`, or `Plugins__SigningSecret` is missing or short. The Docker Compose file uses `${VAR:?...}` references so an unset secret stops the container with a clear error. See [`docs/operations.md`](docs/operations.md#runtime-security-policy) for the full policy.
+
 For the production payment adapter set `Payment__Provider=http` and supply `Payment__Endpoint`, `Payment__ApiKey`, and `Payment__WebhookSecret`. The same values are bound to the documented `Payment:*` keys under the `Payment` section. The configured API key is sent on every checkout request as `Authorization: Bearer …`; missing values fail startup with a `ProviderConfigurationException`.
 
 For the production AI adapter set `Ai__Provider=http` and supply `Ai__Endpoint`, `Ai__ApiKey`, and `Ai__Model`. The configured key is sent on every `POST /v1/ai/assist` request; missing values fail startup.

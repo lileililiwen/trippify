@@ -8,7 +8,6 @@ namespace Trippify.Api;
 
 public static class PluginsEndpoints
 {
-    private const string SigningSecret = PluginSignature.DefaultSecret;
     private static readonly Meter PluginsMeter = new("Trippify.Plugins");
     private static readonly Counter<long> PluginsCommands = PluginsMeter.CreateCounter<long>("trippify.plugins.commands");
 
@@ -30,13 +29,17 @@ public static class PluginsEndpoints
         ownerGroup.MapGet("/installations", ListMyInstallations);
     }
 
-    private static async Task<IResult> RegisterPlugin(RegisterPluginRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock)
+    private static string ResolveSigningSecret(IConfiguration configuration, IWebHostEnvironment environment) =>
+        PluginSignature.ResolveSecret(configuration, environment.IsDevelopment());
+
+    private static async Task<IResult> RegisterPlugin(RegisterPluginRequest request, ClaimsPrincipal principal, AppDbContext db, IClock clock, IConfiguration configuration, IWebHostEnvironment environment)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.Slug) || string.IsNullOrWhiteSpace(request.DisplayName)
             || string.IsNullOrWhiteSpace(request.Version) || string.IsNullOrWhiteSpace(request.Publisher)
             || string.IsNullOrWhiteSpace(request.Manifest) || string.IsNullOrWhiteSpace(request.Signature))
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["manifest"] = ["Manifest, signature, slug, displayName, version, and publisher are required."] });
-        if (!PluginSignature.Verify(request.Manifest, request.Signature, SigningSecret))
+        var signingSecret = ResolveSigningSecret(configuration, environment);
+        if (!PluginSignature.Verify(request.Manifest, request.Signature, signingSecret))
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["signature"] = ["Plugin signature failed verification."] });
         if (await db.Plugins.AsNoTracking().AnyAsync(x => x.Slug == request.Slug && x.Version == request.Version))
             return Results.Conflict(new Dictionary<string, string[]> { ["plugin"] = ["This plugin version is already registered."] });

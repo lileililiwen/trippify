@@ -10,13 +10,39 @@ using Microsoft.AspNetCore.Identity;
 using Trippify.Api;
 var builder = WebApplication.CreateBuilder(args);
 if (builder.Environment.IsProduction() && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Postgres"))) throw new InvalidOperationException("Required production database configuration is missing.");
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+var normalizedOrigins = RuntimeSecurityValidator.Validate(builder.Configuration, builder.Environment);
+if (builder.Environment.IsDevelopment() && normalizedOrigins.Count == 0)
 {
-    if (allowedOrigins.Length > 0) p.WithOrigins(allowedOrigins);
-    else p.SetIsOriginAllowed(_ => true);
-    p.AllowAnyHeader().AllowAnyMethod().AllowCredentials();
-}));
+    normalizedOrigins = new[]
+    {
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5000",
+        "http://127.0.0.1:8080",
+    };
+}
+builder.Services.AddCors(o =>
+{
+    o.AddDefaultPolicy(p =>
+    {
+        if (normalizedOrigins.Count > 0)
+        {
+            p.WithOrigins(normalizedOrigins.ToArray());
+            p.AllowCredentials();
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            p.SetIsOriginAllowed(_ => true);
+        }
+        else
+        {
+            p.SetIsOriginAllowed(_ => false);
+        }
+        p.AllowAnyHeader().AllowAnyMethod();
+    });
+});
 builder.Services.AddProblemDetails();
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("api", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));

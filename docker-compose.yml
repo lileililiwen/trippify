@@ -20,18 +20,28 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Postgres: "Host=postgres;Database=trippify;Username=trippify;Password=trippify_dev"
       SelfHosted__RunMigrationsOnStartup: "true"
-      # Set MAP__PROVIDER to a non-local provider and provide MAP__ENDPOINT
-      # and MAP__APIKEY to delegate geocoding to a managed map provider.
-      # Default is "local" with a curated city dictionary.
+      # Map__Provider=remote delegates geocoding to a managed map provider.
+      # Set Map__Endpoint and Map__ApiKey when switching from the local
+      # geocoder. The local default ships with a curated city dictionary.
       Map__Provider: "local"
-      # Set OBJECTSTORAGE__PROVIDER to "remote" for an S3-compatible
-      # object store. OBJECTSTORAGE__SIGNEDURLSECRET must be a long,
-      # random secret shared with the storage adapter that issues
-      # read URLs. OBJECTSTORAGE__LOCALROOT is ignored when REMOTE.
+      # ObjectStorage__Provider=remote uses an S3-compatible store. Inject
+      # ObjectStorage__SignedUrlSecret, ObjectStorage__AccessKey, and
+      # ObjectStorage__SecretKey from your secret store. The
+      # ObjectStorage__SignedUrlSecret placeholder below is rejected by the
+      # production startup validator; replace it with a long, high-entropy
+      # value (>= 24 random characters) or wire it through Docker secrets.
       ObjectStorage__Provider: "local"
-      ObjectStorage__SignedUrlSecret: "change-me-to-a-long-random-secret"
-      # Set RESEND_API_KEY to a real Resend API key to deliver confirmation
-      # and password-reset emails. Leave unset to use the in-process stub
+      ObjectStorage__SignedUrlSecret: "${TRIPPIFY_OBJECT_STORAGE_SECRET:?TRIPPIFY_OBJECT_STORAGE_SECRET must be set to a long random secret in production}"
+      # Plugins__SigningSecret signs plugin manifests before they are
+      # accepted by the administrator endpoint. The same placeholder rule
+      # applies: the dev default is rejected in Production.
+      Plugins__SigningSecret: "${TRIPPIFY_PLUGIN_SIGNING_SECRET:?TRIPPIFY_PLUGIN_SIGNING_SECRET must be set to a long random secret in production}"
+      # Cors__AllowedOrigins__N lists the exact scheme/host/port values that
+      # may send credentialed cross-origin requests. Empty or wildcard
+      # values are rejected by the production startup validator.
+      Cors__AllowedOrigins__0: "${TRIPPIFY_ALLOWED_ORIGIN:?TRIPPIFY_ALLOWED_ORIGIN must be set to the exact frontend origin in production}"
+      # RESEND_API_KEY: real Resend API key to deliver confirmation and
+      # password-reset emails. Leave unset to use the in-process stub
       # (registration succeeds, emails are silently dropped).
       # RESEND_API_KEY: "re_..."
     depends_on:
