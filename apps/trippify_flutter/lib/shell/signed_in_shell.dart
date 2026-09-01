@@ -172,13 +172,6 @@ class _SignedInShellState extends State<SignedInShell> {
 
     return Scaffold(
       body: widget.child ?? const SizedBox.shrink(),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Sign out',
-        onPressed: () async {
-          await _session.signOut();
-        },
-        child: const Icon(Icons.logout),
-      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex < 0 ? 0 : currentIndex,
         destinations: destinations.map((entry) => entry.navigation).toList(),

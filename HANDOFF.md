@@ -2,9 +2,9 @@
 
 ## Next spec
 
-`complete-flutter-workspace-ux`
+`complete-flutter-localization-and-accessibility`
 
-Path: `openspec/changes/complete-flutter-workspace-ux/`
+Path: `openspec/changes/complete-flutter-localization-and-accessibility/`
 
 Status: planned and strictly validated; implementation has not started.
 
@@ -12,6 +12,7 @@ Status: planned and strictly validated; implementation has not started.
 
 These audit changes have been merged into `openspec/specs/` and committed:
 
+- `complete-flutter-workspace-ux` (in this branch, awaiting commit)
 - `align-flutter-api-methods-and-error-states` (commit `a5813da`)
 - `fail-closed-evidence-malware-scanning` (commit `40ff68e`)
 - `fix-provider-health-probes` (commit `e61bda0`)
@@ -19,8 +20,9 @@ These audit changes have been merged into `openspec/specs/` and committed:
 - `harden-cross-origin-and-runtime-secrets` (commit `4b90390`)
 - `wire-production-provider-credentials` (commit `77555e6`)
 
-The next unstarted audit change after `complete-flutter-workspace-ux` is
-`complete-flutter-localization-and-accessibility`.
+The next unstarted audit change after
+`complete-flutter-localization-and-accessibility` is
+`add-rendered-browser-and-release-quality-gates`.
 
 ## Objective
 

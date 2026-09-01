@@ -1469,7 +1469,7 @@ void main() {
       find.textContaining('Visible 0 · Flagged 0 · Hidden 0'),
       findsOneWidget,
     );
-  }, skip: true); // Creator dashboard home entry is pending the workspace UX change; the dashboard surface itself is reachable via the bottom navigation.
+  });
   testWidgets('admin operations screen handles forbidden states', (
     tester,
   ) async {
@@ -1492,7 +1492,7 @@ void main() {
     expect(find.text('Audit log'), findsOneWidget);
     expect(find.text('Users'), findsOneWidget);
     expect(find.text('Creators'), findsOneWidget);
-  }, skip: true); // Admin operations entry is exposed only to administrators in the bottom navigation; the workspace UX change must route here from the home for the non-admin flow.
+  });
   testWidgets('notifications screen renders empty state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -1677,8 +1677,7 @@ void main() {
       expect(find.text('Creator dashboard'), findsNothing);
       expect(find.text('Admin operations'), findsNothing);
     },
-    skip: true,
-  ); // "Welcome back, Traveler." and the "Become a creator" CTA live in the home redesign tracked by the workspace UX change.
+  );
   testWidgets(
     'signed-in creator home shows Creator dashboard and hides Become a creator',
     (tester) async {
@@ -1703,8 +1702,7 @@ void main() {
       expect(find.text('My guides'), findsOneWidget);
       expect(find.text('Admin operations'), findsNothing);
     },
-    skip: true,
-  ); // Creator home tile copy is part of the workspace UX change.
+  );
   testWidgets(
     'administrator home surfaces Admin operations in the workspace',
     (tester) async {
@@ -1726,8 +1724,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Admin operations'), findsOneWidget);
     },
-    skip: true,
-  ); // Admin operations home entry is part of the workspace UX change.
+  );
   testWidgets('email-unverified banner appears for unconfirmed accounts', (
     tester,
   ) async {
@@ -1747,7 +1744,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Verify your email'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Resend'), findsOneWidget);
-  }, skip: true); // Email-unverified banner copy is part of the home redesign in the workspace UX change.
+  });
   testWidgets('signing out from the home surface reverts to anonymous', (
     tester,
   ) async {
@@ -1789,7 +1786,7 @@ void main() {
     await api.signOut();
     await tester.pumpAndSettle();
     expect(find.text('Sign in'), findsOneWidget);
-  }, skip: true); // The home surface does not render a personalized greeting yet; the wire-level session test in api_client_request_test covers the token-listener side effect.
+  });
 
   // --- Design system foundation (audit-2026-08-27-design-system-foundation) ---
 

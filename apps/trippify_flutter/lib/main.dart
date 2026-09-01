@@ -12,6 +12,7 @@ import 'design/theme.dart';
 import 'onboarding/registration_confirmation_screen.dart';
 import 'session_controller.dart';
 import 'shell/signed_in_shell.dart';
+import 'shell/workspace_screen.dart' as workspace;
 
 /// A section title that announces itself as a header to assistive tech.
 Widget sectionTitle(BuildContext context, String text, {TextStyle? style}) {
@@ -84,13 +85,13 @@ class _TrippifyAppState extends State<TrippifyApp> {
         child: CreatorEnrollmentScreen(api: widget.api),
       ),
       '/creator': (_) => PublicCreatorScreen(api: widget.api),
-      '/guides': (_) => _ShellRoute(
+      '/guides': (_) => _GuardedShellRoute(
         api: widget.api,
         session: session,
         destination: SignedInDestination.create,
         child: GuideWorkspaceScreen(api: widget.api),
       ),
-      '/planning': (_) => _ShellRoute(
+      '/planning': (_) => _GuardedShellRoute(
         api: widget.api,
         session: session,
         destination: SignedInDestination.plan,
@@ -108,15 +109,45 @@ class _TrippifyAppState extends State<TrippifyApp> {
         destination: SignedInDestination.library,
         child: LibraryScreen(api: widget.api),
       ),
-      '/creator/dashboard': (_) => CreatorDashboardScreen(api: widget.api),
-      '/admin/operations': (_) => AdminOperationsScreen(api: widget.api),
+      '/creator/dashboard': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/creator/dashboard',
+        child: CreatorDashboardScreen(api: widget.api),
+      ),
+      '/admin/operations': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/admin/operations',
+        child: AdminOperationsScreen(api: widget.api),
+      ),
       '/notifications': (_) => NotificationsScreen(api: widget.api),
       '/notification-preferences': (_) =>
           NotificationPreferencesScreen(api: widget.api),
-      '/plugins': (_) => PluginCatalogScreen(api: widget.api),
-      '/tenant': (_) => TenantDashboardScreen(api: widget.api),
-      '/assisted-import': (_) => AssistedImportScreen(api: widget.api),
-      '/license-panel': (_) => LicensePanelScreen(api: widget.api),
+      '/plugins': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/plugins',
+        child: PluginCatalogScreen(api: widget.api),
+      ),
+      '/tenant': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/tenant',
+        child: TenantDashboardScreen(api: widget.api),
+      ),
+      '/assisted-import': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/assisted-import',
+        child: AssistedImportScreen(api: widget.api),
+      ),
+      '/license-panel': (_) => _GuardedRoute(
+        api: widget.api,
+        session: session,
+        route: '/license-panel',
+        child: LicensePanelScreen(api: widget.api),
+      ),
       '/system': (_) => SystemStatusScreen(api: widget.api),
     },
   );
@@ -145,7 +176,7 @@ class _ShellRoute extends StatelessWidget {
       onNavigate: (d) {
         switch (d) {
           case SignedInDestination.home:
-            Navigator.pushReplacementNamed(context, '/profile');
+            Navigator.pushReplacementNamed(context, '/');
           case SignedInDestination.discover:
             Navigator.pushReplacementNamed(context, '/discover');
           case SignedInDestination.library:
@@ -160,6 +191,146 @@ class _ShellRoute extends StatelessWidget {
       onSignedOut: () =>
           Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false),
     );
+  }
+}
+
+/// Route guard used for shell-backed destinations. The current session
+/// is consulted to decide whether the destination is accessible; the
+/// server is still authoritative for resource access. The bottom-nav
+/// shell continues to operate in either branch.
+class _GuardedShellRoute extends StatelessWidget {
+  const _GuardedShellRoute({
+    required this.api,
+    required this.session,
+    required this.destination,
+    required this.child,
+  });
+
+  final AppApi api;
+  final SessionController session;
+  final SignedInDestination destination;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SessionState>(
+      stream: _sessionStream(session),
+      initialData: session.state,
+      builder: (context, snapshot) {
+        final state = snapshot.data ?? session.state;
+        final summary = state.summary;
+        if (summary == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Loading')),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        final scaffold = Scaffold(
+          appBar: AppBar(title: const Text('Restricted')),
+          body: workspace.AccessDeniedScreen(
+            route: _routeNameFor(destination),
+            onReturnHome: () =>
+                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false),
+          ),
+        );
+        if (!_isAllowed(destination, summary)) {
+          return scaffold;
+        }
+        return _ShellRoute(
+          api: api,
+          session: session,
+          destination: destination,
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Route guard for non-shell protected routes. The session is consulted
+/// for the relevant role, and the access-denied surface is shown if the
+/// user lacks it.
+class _GuardedRoute extends StatelessWidget {
+  const _GuardedRoute({
+    required this.api,
+    required this.session,
+    required this.route,
+    required this.child,
+  });
+
+  final AppApi api;
+  final SessionController session;
+  final String route;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SessionState>(
+      stream: _sessionStream(session),
+      initialData: session.state,
+      builder: (context, snapshot) {
+        final state = snapshot.data ?? session.state;
+        final summary = state.summary;
+        if (summary == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Loading')),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!workspace.isRouteAllowedFor(route, summary)) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Restricted')),
+            body: workspace.AccessDeniedScreen(
+              route: route,
+              onReturnHome: () => Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/',
+                (_) => false,
+              ),
+            ),
+          );
+        }
+        return child;
+      },
+    );
+  }
+}
+
+Stream<SessionState> _sessionStream(SessionController session) {
+  final controller = StreamController<SessionState>();
+  void emit() => controller.add(session.state);
+  emit();
+  void listener() => emit();
+  session.addListener(listener);
+  controller.onCancel = () => session.removeListener(listener);
+  return controller.stream;
+}
+
+bool _isAllowed(SignedInDestination destination, MySummary summary) {
+  switch (destination) {
+    case SignedInDestination.create:
+      return summary.isCreator;
+    case SignedInDestination.plan:
+      return true;
+    case SignedInDestination.home:
+    case SignedInDestination.discover:
+    case SignedInDestination.library:
+      return true;
+  }
+}
+
+String _routeNameFor(SignedInDestination destination) {
+  switch (destination) {
+    case SignedInDestination.create:
+      return '/guides';
+    case SignedInDestination.plan:
+      return '/planning';
+    case SignedInDestination.home:
+      return '/';
+    case SignedInDestination.discover:
+      return '/discover';
+    case SignedInDestination.library:
+      return '/library';
   }
 }
 
@@ -278,145 +449,16 @@ class _SystemScreenState extends State<SystemScreen> {
     );
   }
 
-  Widget _buildAuthenticatedHome(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 32),
-        _buildHeader(context),
-        const SizedBox(height: 32),
-        _buildSummaryCard(context),
-        const SizedBox(height: 32),
-        _buildQuickActions(context),
-      ],
-    ),
-  );
-
-  Widget _buildHeader(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        CircleAvatar(
-          backgroundColor: colorScheme.primary,
-          radius: 32,
-          child: Text(
-            _userSummary!.displayName.isNotEmpty
-                ? _userSummary!.displayName[0].toUpperCase()
-                : 'U',
-            style: TextStyle(color: colorScheme.onPrimary, fontSize: 20),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _userSummary!.displayName,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _userSummary!.accountStatus,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCard(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 24),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Account Summary',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Email:'),
-                Text(
-                  _userSummary!.email,
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Creator:'),
-                Text(
-                  _userSummary!.isCreator ? 'Yes' : 'No',
-                  style: TextStyle(
-                    color: _userSummary!.isCreator
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Roles:'),
-                Text(
-                  _userSummary!.roles.isEmpty
-                      ? 'None'
-                      : _userSummary!.roles.join(', '),
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ],
-        ),
+  Widget _buildAuthenticatedHome(BuildContext context) {
+    final summary = _userSummary!;
+    return workspace.ConstrainedWorkspace(
+      child: workspace.WorkspaceScreen(
+        summary: summary,
+        onNavigate: (route) => Navigator.pushNamed(context, route),
+        onResendVerification: () => widget.api.resendVerification(),
       ),
     );
   }
-
-  Widget _buildQuickActions(BuildContext context) => Wrap(
-    spacing: 12,
-    runSpacing: 12,
-    children: [
-      _actionButton(context, '/guides', Icons.menu_book, 'My guides'),
-      _actionButton(context, '/discover', Icons.explore, 'Discover guides'),
-      _actionButton(
-        context,
-        '/library',
-        Icons.collections_bookmark,
-        'My library',
-      ),
-    ],
-  );
-
-  Widget _actionButton(
-    BuildContext context,
-    String route,
-    IconData icon,
-    String label,
-  ) => FilledButton.icon(
-    onPressed: () => Navigator.pushNamed(context, route),
-    icon: Icon(icon, size: 20),
-    label: Text(label),
-  );
 }
 
 class GuideWorkspaceScreen extends StatefulWidget {
@@ -1110,105 +1152,155 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
           return const Center(child: Text('Guide not found.'));
         }
         final data = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(data.title, style: Theme.of(context).textTheme.titleLarge),
-            Text(data.subtitle),
-            Text(data.summary),
-            Text('${data.countryCode} · ${data.cities.join(', ')}'),
-            TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      AuthorScreen(api: widget.api, slug: data.authorSlug),
-                ),
+        return workspace.ConstrainedWorkspace(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                data.title,
+                style: Theme.of(context).textTheme.titleLarge,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 3,
               ),
-              child: const Text('View author'),
-            ),
-            if (data.pricing == 'paid' && !data.unlocked) ...[
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  'Paid preview. Unlock for '
-                  '${data.priceMinorUnits} ${data.currencyCode}.',
-                ),
+              Text(
+                data.subtitle,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
               ),
-              TextField(
-                controller: discount,
-                decoration: const InputDecoration(labelText: 'Discount code'),
+              Text(data.summary, overflow: TextOverflow.visible),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  _GuideChip(label: data.countryCode),
+                  for (final city in data.cities) _GuideChip(label: city),
+                ],
               ),
-              FilledButton(
-                onPressed: () => buy(data),
-                child: Text(
-                  'Buy and unlock · ${data.priceMinorUnits} ${data.currencyCode}',
-                ),
-              ),
-            ] else if (data.pricing == 'paid')
-              Semantics(
-                liveRegion: true,
-                child: const Text('Purchased. Full guide unlocked.'),
-              ),
-            if (data.unlocked) ...[
-              FilledButton(
-                onPressed: () => fork(data),
-                child: const Text('Fork for editing'),
-              ),
-              OutlinedButton(
-                onPressed: () => saveTrip(data),
-                child: const Text('Save as a trip'),
-              ),
-            ],
-            OutlinedButton(
-              onPressed: () => toggleFavorite(data),
-              child: Text(favorite ? 'Unfavorite' : 'Favorite'),
-            ),
-            if (status != null)
-              Semantics(liveRegion: true, child: Text(status!)),
-            for (final day in data.days) ...[
-              Text(day.title, style: Theme.of(context).textTheme.titleMedium),
-              for (final node in day.nodes)
-                ListTile(
-                  leading: Icon(
-                    node.hasDetails ? Icons.place : Icons.lock_outline,
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        AuthorScreen(api: widget.api, slug: data.authorSlug),
                   ),
-                  title: Text(node.name),
                 ),
-            ],
-            const SizedBox(height: 16),
-            sectionTitle(context, 'Reviews'),
-            if (data.unlocked)
-              _ReviewSection(
+                child: const Text('View author'),
+              ),
+              if (data.pricing == 'paid' && !data.unlocked) ...[
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    'Paid preview. Unlock for '
+                    '${data.priceMinorUnits} ${data.currencyCode}.',
+                  ),
+                ),
+                TextField(
+                  controller: discount,
+                  decoration: const InputDecoration(labelText: 'Discount code'),
+                ),
+                FilledButton(
+                  onPressed: () => buy(data),
+                  child: Text(
+                    'Buy and unlock · ${data.priceMinorUnits} ${data.currencyCode}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ] else if (data.pricing == 'paid')
+                Semantics(
+                  liveRegion: true,
+                  child: const Text('Purchased. Full guide unlocked.'),
+                ),
+              if (data.unlocked) ...[
+                FilledButton(
+                  onPressed: () => fork(data),
+                  child: const Text('Fork for editing'),
+                ),
+                OutlinedButton(
+                  onPressed: () => saveTrip(data),
+                  child: const Text('Save as a trip'),
+                ),
+              ],
+              OutlinedButton(
+                onPressed: () => toggleFavorite(data),
+                child: Text(favorite ? 'Unfavorite' : 'Favorite'),
+              ),
+              if (status != null)
+                Semantics(liveRegion: true, child: Text(status!)),
+              for (final day in data.days) ...[
+                Text(
+                  day.title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+                for (final node in day.nodes)
+                  ListTile(
+                    leading: Icon(
+                      node.hasDetails ? Icons.place : Icons.lock_outline,
+                    ),
+                    title: Text(
+                      node.name,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 16),
+              sectionTitle(context, 'Reviews'),
+              if (data.unlocked)
+                _ReviewSection(
+                  api: widget.api,
+                  guideId: data.id,
+                  onSubmit: () => setState(() {
+                    status = 'Review submitted.';
+                  }),
+                ),
+              const SizedBox(height: 16),
+              sectionTitle(context, 'Verified trips'),
+              _VerifiedTripsSection(
                 api: widget.api,
                 guideId: data.id,
-                onSubmit: () => setState(() {
-                  status = 'Review submitted.';
-                }),
+                unlocked: data.unlocked,
+                onSubmit: (message) => setState(() => status = message),
               ),
-            const SizedBox(height: 16),
-            sectionTitle(context, 'Verified trips'),
-            _VerifiedTripsSection(
-              api: widget.api,
-              guideId: data.id,
-              unlocked: data.unlocked,
-              onSubmit: (message) => setState(() => status = message),
-            ),
-            const SizedBox(height: 16),
-            sectionTitle(context, 'Release history'),
-            _ReleasesSection(api: widget.api, guideId: data.id),
-            const SizedBox(height: 16),
-            sectionTitle(context, 'Send feedback'),
-            _PublicFeedbackForm(
-              api: widget.api,
-              guideId: data.id,
-              onSubmitted: (message) => setState(() => status = message),
-            ),
-          ],
+              const SizedBox(height: 16),
+              sectionTitle(context, 'Release history'),
+              _ReleasesSection(api: widget.api, guideId: data.id),
+              const SizedBox(height: 16),
+              sectionTitle(context, 'Send feedback'),
+              _PublicFeedbackForm(
+                api: widget.api,
+                guideId: data.id,
+                onSubmitted: (message) => setState(() => status = message),
+              ),
+            ],
+          ),
         );
       },
     ),
   );
+}
+
+class _GuideChip extends StatelessWidget {
+  const _GuideChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      ),
+    );
+  }
 }
 
 class _ReleasesSection extends StatefulWidget {
@@ -4246,39 +4338,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (s.hasError) {
             return const Center(child: Text('Unable to load profile'));
           }
-          return ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              Text(
-                s.data!.displayName.isEmpty
-                    ? 'Profile not completed'
-                    : s.data!.displayName,
-              ),
-              Text(s.data!.email),
-              Text('Account: ${s.data!.status}'),
-              TextFormField(
-                controller: displayName,
-                maxLength: 80,
-                decoration: const InputDecoration(
-                  labelText: 'Display name',
-                  helperText: 'Up to 80 characters',
+          return workspace.ConstrainedWorkspace(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  s.data!.displayName.isEmpty
+                      ? 'Profile not completed'
+                      : s.data!.displayName,
+                  style: Theme.of(context).textTheme.titleLarge,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  await widget.api.updateProfile(displayName.text, null, null);
-                  if (!mounted) return;
-                  setState(() => saved = 'Profile saved.');
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('Profile saved.')),
-                  );
-                },
-                child: const Text('Save profile'),
-              ),
-              if (saved != null)
-                Semantics(liveRegion: true, child: Text(saved!)),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  s.data!.email,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 4),
+                Text('Account: ${s.data!.status}'),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: displayName,
+                  maxLength: 80,
+                  decoration: const InputDecoration(
+                    labelText: 'Display name',
+                    helperText: 'Up to 80 characters',
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    await widget.api.updateProfile(
+                      displayName.text,
+                      null,
+                      null,
+                    );
+                    if (!mounted) return;
+                    setState(() => saved = 'Profile saved.');
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Profile saved.')),
+                    );
+                  },
+                  child: const Text('Save profile'),
+                ),
+                if (saved != null)
+                  Semantics(liveRegion: true, child: Text(saved!)),
+              ],
+            ),
           );
         },
       ),
