@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -15,24 +16,66 @@ class ApiException implements Exception {
   final int statusCode;
   final String message;
   @override
-  String toString() => message.isEmpty ? 'Request failed ($statusCode)' : message;
+  String toString() =>
+      message.isEmpty ? 'Request failed ($statusCode)' : message;
+}
+
+/// Signal that the caller of an in-flight API request cancelled it before
+/// the server responded. Screens should treat this as a normal lifecycle
+/// event and avoid mutating state that has already been disposed.
+class CancelledApiCall implements Exception {
+  const CancelledApiCall();
+  @override
+  String toString() => 'Request was cancelled';
+}
+
+/// Token a screen can pass to a request method so it can cancel the
+/// in-flight HTTP call when the screen is disposed. The token is a plain
+/// [Completer]; screens call [cancel] to short-circuit the future.
+class CancelToken {
+  CancelToken() : _completer = Completer<void>();
+  final Completer<void> _completer;
+  bool get isCancelled => _completer.isCompleted;
+  void cancel() {
+    if (_completer.isCompleted) return;
+    _completer.complete();
+  }
 }
 
 /// Typed error taxonomy. Use [toAppError] to map any thrown error to one
 /// of these so screens can render the right copy for 404, 500, offline,
 /// and declined payments instead of a single generic message.
-enum AppError { notFound, unauthorized, paymentDeclined, network, server, unknown }
+enum AppError {
+  validation,
+  notFound,
+  unauthorized,
+  conflict,
+  paymentDeclined,
+  rateLimit,
+  network,
+  server,
+  cancelled,
+  unknown,
+}
 
 AppError toAppError(Object e) {
+  if (e is CancelledApiCall) return AppError.cancelled;
   if (e is ApiException) {
     switch (e.statusCode) {
+      case 400:
+      case 422:
+        return AppError.validation;
       case 401:
       case 403:
         return AppError.unauthorized;
-      case 402:
-        return AppError.paymentDeclined;
       case 404:
         return AppError.notFound;
+      case 409:
+        return AppError.conflict;
+      case 402:
+        return AppError.paymentDeclined;
+      case 429:
+        return AppError.rateLimit;
     }
     if (e.statusCode >= 500) return AppError.server;
     return AppError.unknown;
@@ -50,19 +93,28 @@ AppError toAppError(Object e) {
 }
 
 /// Human-readable copy for an [AppError]. Use this in [ErrorState] so
-/// every screen surfaces the right message.
+/// every screen surfaces the right message. Copy is intentionally short,
+/// never leaks raw server bodies, and never references bearer tokens.
 String appErrorMessage(AppError err) {
   switch (err) {
+    case AppError.validation:
+      return 'Some fields need attention. Review the form and try again.';
     case AppError.notFound:
       return 'This resource is no longer available.';
     case AppError.unauthorized:
-      return 'You need to sign in to do that.';
+      return 'You need to sign in to continue.';
+    case AppError.conflict:
+      return 'This changed since you loaded it. Reload to see the latest version.';
     case AppError.paymentDeclined:
       return 'Your payment was declined. Try a different method.';
+    case AppError.rateLimit:
+      return 'Too many requests. Wait a moment and try again.';
     case AppError.network:
       return 'Unable to reach the service. Check your connection.';
     case AppError.server:
       return 'The service is having trouble. Try again shortly.';
+    case AppError.cancelled:
+      return 'Request cancelled.';
     case AppError.unknown:
       return 'Something went wrong. Please try again.';
   }
@@ -134,18 +186,23 @@ abstract interface class AppApi {
   });
   Future<PublicGuide> getPublicGuide(String slug);
   Future<AuthorPage> getAuthor(String slug);
-  Future<CheckoutSession> checkout(String guideId, {String? discountCode, String? idempotencyKey});
+  Future<CheckoutSession> checkout(
+    String guideId, {
+    String? discountCode,
+    String? idempotencyKey,
+  });
   Future<List<Entitlement>> getEntitlements();
   Future<void> addFavorite(String guideId);
   Future<void> removeFavorite(String guideId);
   Future<List<Favorite>> listFavorites();
-  Future<List<Trip>> listTrips();
+  Future<List<Trip>> listTrips({CancelToken? cancelToken});
   Future<Trip> createTrip(String guideId, {String? title});
   Future<Trip> updateTrip(
     String tripId, {
     String? notes,
     String? status,
     String? title,
+    CancelToken? cancelToken,
   });
   Future<ForkResult> forkGuide(String guideId);
   Future<List<Review>> listReviews(String guideId);
@@ -174,11 +231,19 @@ abstract interface class AppApi {
     required List<int> bytes,
   });
   Future<List<EvidenceAttachmentSummary>> listEvidenceStagedAttachments();
-  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(String evidenceId);
+  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(
+    String evidenceId,
+  );
   Future<void> removeEvidenceAttachment(String attachmentId);
-  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId);
-  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(String evidenceId);
-  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(String attachmentId);
+  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(
+    String attachmentId,
+  );
+  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(
+    String evidenceId,
+  );
+  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(
+    String attachmentId,
+  );
   Future<TripInsightSummary> getTripInsights(String guideId);
   Future<void> submitTripInsight(
     String guideId, {
@@ -200,7 +265,9 @@ abstract interface class AppApi {
   Future<NotificationList> listNotifications({int? limit});
   Future<void> markNotificationRead(String id);
   Future<NotificationPreferences> getNotificationPreferences();
-  Future<NotificationPreferences> updateNotificationPreferences(NotificationPreferences preferences);
+  Future<NotificationPreferences> updateNotificationPreferences(
+    NotificationPreferences preferences,
+  );
   Future<GuideReleaseList> listGuideReleases(String guideId, {int? limit});
   Future<GuideRelease> getGuideRelease(String releaseId);
   Future<GuideFreshness> getGuideFreshness(String guideId);
@@ -221,7 +288,11 @@ abstract interface class AppApi {
   Future<ImportJobDetail> processImportJob(String jobId);
   Future<ImportDraft> approveImportDraft(String draftId, String? guideId);
   Future<ImportDraft> rejectImportDraft(String draftId);
-  Future<Translation> createTranslation(String sourceDraftId, String locale, String body);
+  Future<Translation> createTranslation(
+    String sourceDraftId,
+    String locale,
+    String body,
+  );
   Future<List<QuotaRow>> listMyAiQuotas();
   Future<List<LicensePolicy>> listMyLicensePolicies();
   Future<LicensePolicy> upsertMyLicensePolicy({
@@ -254,7 +325,11 @@ abstract interface class AppApi {
   Future<BackupSnapshot> triggerSystemBackup({String? label});
   Future<void> triggerSystemRestore(String payload);
   Future<List<FeatureFlag>> listFeatureFlags();
-  Future<FeatureFlag> upsertFeatureFlag({required String key, required bool enabled, required String value});
+  Future<FeatureFlag> upsertFeatureFlag({
+    required String key,
+    required bool enabled,
+    required String value,
+  });
 }
 
 class GuideSummary {
@@ -321,7 +396,12 @@ class RouteSegment {
 }
 
 class DayRoute {
-  const DayRoute(this.concurrencyToken, this.markers, this.segments, this.geocodeAttribution);
+  const DayRoute(
+    this.concurrencyToken,
+    this.markers,
+    this.segments,
+    this.geocodeAttribution,
+  );
   final String concurrencyToken;
   final String? geocodeAttribution;
   final List<RouteMarker> markers;
@@ -407,8 +487,15 @@ class PublicGuide {
     this.unlocked,
     this.days,
   );
-  final String id, slug, title, subtitle, summary, countryCode, pricing, authorSlug,
-    shareUrl;
+  final String id,
+      slug,
+      title,
+      subtitle,
+      summary,
+      countryCode,
+      pricing,
+      authorSlug,
+      shareUrl;
   final List<String> cities, tags;
   final int tripDays;
   final int? priceMinorUnits;
@@ -426,7 +513,11 @@ class CheckoutSession {
     this.currencyCode,
     this.providerName,
   );
-  final String orderId, checkoutReference, checkoutUrl, currencyCode, providerName;
+  final String orderId,
+      checkoutReference,
+      checkoutUrl,
+      currencyCode,
+      providerName;
   final int amountMinorUnits;
 }
 
@@ -611,6 +702,11 @@ class EvidenceAttachmentReviewerView {
   final String state;
   final String? scanFailureCode;
 
+  bool get isReady => state == 'Ready';
+  bool get isScanning => state == 'Scanning';
+  bool get isRejected => state == 'Rejected';
+  bool get isStaged => state == 'Staged';
+
   factory EvidenceAttachmentReviewerView.fromJson(Map<String, dynamic> v) {
     return EvidenceAttachmentReviewerView(
       id: v['id'] as String,
@@ -792,12 +888,7 @@ class AdminUsersResponse {
 }
 
 class AdminCreatorRow {
-  const AdminCreatorRow(
-    this.userId,
-    this.slug,
-    this.status,
-    this.createdAt,
-  );
+  const AdminCreatorRow(this.userId, this.slug, this.status, this.createdAt);
   final String userId, slug, status;
   final DateTime createdAt;
 }
@@ -989,14 +1080,24 @@ class QuotaList {
 }
 
 class ExportPurchaseRow {
-  const ExportPurchaseRow(this.guideId, this.orderId, this.grantedAt, this.revokedAt);
+  const ExportPurchaseRow(
+    this.guideId,
+    this.orderId,
+    this.grantedAt,
+    this.revokedAt,
+  );
   final String guideId, orderId;
   final DateTime grantedAt;
   final DateTime? revokedAt;
 }
 
 class ExportPayload {
-  const ExportPayload(this.userId, this.displayName, this.locale, this.purchases);
+  const ExportPayload(
+    this.userId,
+    this.displayName,
+    this.locale,
+    this.purchases,
+  );
   final String userId, displayName;
   final String? locale;
   final List<ExportPurchaseRow> purchases;
@@ -1035,7 +1136,12 @@ class ImportDraft {
     this.modelName,
     this.schemaVersion,
   );
-  final String id, importJobId, suggestedTitle, provenanceJson, status, suggestedNodesJson;
+  final String id,
+      importJobId,
+      suggestedTitle,
+      provenanceJson,
+      status,
+      suggestedNodesJson;
   final String providerName, modelName, schemaVersion;
   final DateTime createdAt;
   bool get isAiLabeled => providerName.isNotEmpty && providerName != 'local';
@@ -1095,7 +1201,12 @@ class RemixAncestry {
     this.createdAt,
     this.decidedAt,
   );
-  final String id, childGuideId, parentGuideId, licensePolicyId, attributionJson, decision;
+  final String id,
+      childGuideId,
+      parentGuideId,
+      licensePolicyId,
+      attributionJson,
+      decision;
   final DateTime createdAt;
   final DateTime? decidedAt;
 }
@@ -1156,6 +1267,7 @@ class MemoryTokenStore implements TokenStore {
   Future<void> write(String? token) async {
     _notifier.value = token;
   }
+
   void writeSync(String? token) => _notifier.value = token;
   @override
   ValueListenable<String?> get listenable => _notifier;
@@ -1163,7 +1275,7 @@ class MemoryTokenStore implements TokenStore {
 
 class SecureTokenStore implements TokenStore {
   SecureTokenStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage() {
+    : _storage = storage ?? const FlutterSecureStorage() {
     _hydrate();
   }
   static const _key = 'trippify_access_token';
@@ -1175,7 +1287,8 @@ class SecureTokenStore implements TokenStore {
   }
 
   @override
-  Future<String?> read() async => _notifier.value ?? await _storage.read(key: _key);
+  Future<String?> read() async =>
+      _notifier.value ?? await _storage.read(key: _key);
   @override
   Future<void> write(String? token) async {
     if (token == null) {
@@ -1185,6 +1298,7 @@ class SecureTokenStore implements TokenStore {
     }
     _notifier.value = token;
   }
+
   @override
   ValueListenable<String?> get listenable => _notifier;
 }
@@ -1292,7 +1406,8 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<GuideSummary>> getMyGuides() async {
-    final values = await _request('GET', '/api/v1/guides', null, const {}) as List;
+    final values =
+        await _request('GET', '/api/v1/guides', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return GuideSummary(
@@ -1347,7 +1462,11 @@ class ApiClient implements AppApi {
 
   @override
   Future<DayRoute> getDayRoute(String guideId, int dayPosition) async {
-    final v = await _json('GET', '/api/v1/guides/$guideId/days/$dayPosition/route', null);
+    final v = await _json(
+      'GET',
+      '/api/v1/guides/$guideId/days/$dayPosition/route',
+      null,
+    );
     final attribution = _firstMarkerAttribution(v['markers']);
     return DayRoute(
       v['concurrencyToken'] as String,
@@ -1513,10 +1632,11 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<void> unpublishGuide(String guideId, String concurrencyToken) =>
-      _json('POST', '/api/v1/guides/$guideId/unpublish', {
-        'concurrencyToken': concurrencyToken,
-      });
+  Future<void> unpublishGuide(String guideId, String concurrencyToken) => _json(
+    'POST',
+    '/api/v1/guides/$guideId/unpublish',
+    {'concurrencyToken': concurrencyToken},
+  );
 
   @override
   Future<SearchResult> searchGuides({
@@ -1587,7 +1707,10 @@ class ApiClient implements AppApi {
           d['title'] as String,
           (d['nodes'] as List? ?? const []).map((node) {
             final n = node as Map<String, dynamic>;
-            return PublicGuideNode(n['name'] as String, n.containsKey('latitude'));
+            return PublicGuideNode(
+              n['name'] as String,
+              n.containsKey('latitude'),
+            );
           }).toList(),
         );
       }).toList(),
@@ -1621,9 +1744,14 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<CheckoutSession> checkout(String guideId, {String? discountCode, String? idempotencyKey}) async {
+  Future<CheckoutSession> checkout(
+    String guideId, {
+    String? discountCode,
+    String? idempotencyKey,
+  }) async {
     final headers = <String, String>{};
-    if (idempotencyKey != null && idempotencyKey.isNotEmpty) headers['Idempotency-Key'] = idempotencyKey;
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty)
+      headers['Idempotency-Key'] = idempotencyKey;
     final v = await _jsonWithHeaders('POST', '/api/v1/commerce/checkout', {
       'guideId': guideId,
       if (discountCode != null && discountCode.isNotEmpty)
@@ -1641,7 +1769,12 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Entitlement>> getEntitlements() async {
-    final values = await _request('GET', '/api/v1/commerce/entitlements', null, const {}) as List;
+    final values = await _request(
+      'GET',
+      '/api/v1/commerce/entitlements',
+      null,
+      const {},
+    ) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Entitlement(
@@ -1662,7 +1795,12 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Favorite>> listFavorites() async {
-    final values = await _request('GET', '/api/v1/library/favorites', null, const {}) as List;
+    final values = await _request(
+      'GET',
+      '/api/v1/library/favorites',
+      null,
+      const {},
+    ) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Favorite(
@@ -1676,8 +1814,14 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<List<Trip>> listTrips() async {
-    final values = await _request('GET', '/api/v1/library/trips', null, const {}) as List;
+  Future<List<Trip>> listTrips({CancelToken? cancelToken}) async {
+    final values = await _request(
+      'GET',
+      '/api/v1/library/trips',
+      null,
+      const {},
+      cancelToken: cancelToken,
+    ) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Trip(
@@ -1713,12 +1857,13 @@ class ApiClient implements AppApi {
     String? notes,
     String? status,
     String? title,
+    CancelToken? cancelToken,
   }) async {
-    final v = await _json('PATCH', '/api/v1/library/trips/$tripId', {
+    final v = await _jsonWithCancel('PATCH', '/api/v1/library/trips/$tripId', {
       if (title != null) 'title': title,
       if (notes != null) 'notes': notes,
       if (status != null) 'status': status,
-    });
+    }, cancelToken: cancelToken);
     return Trip(
       v['id'] as String,
       v['title'] as String,
@@ -1731,7 +1876,9 @@ class ApiClient implements AppApi {
 
   @override
   Future<ForkResult> forkGuide(String guideId) async {
-    final v = await _json('POST', '/api/v1/library/forks', {'guideId': guideId});
+    final v = await _json('POST', '/api/v1/library/forks', {
+      'guideId': guideId,
+    });
     return ForkResult(
       v['id'] as String,
       v['slug'] as String,
@@ -1743,7 +1890,12 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Review>> listReviews(String guideId) async {
-    final values = await _request('GET', '/api/v1/guides/$guideId/reviews', null, const {}) as List;
+    final values = await _request(
+      'GET',
+      '/api/v1/guides/$guideId/reviews',
+      null,
+      const {},
+    ) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       final replyData = v['reply'] as Map<String, dynamic>?;
@@ -1850,7 +2002,11 @@ class ApiClient implements AppApi {
 
   @override
   Future<VerifiedBadge> getVerifiedBadge(String guideId) async {
-    final v = await _json('GET', '/api/v1/guides/$guideId/evidence/badge', null);
+    final v = await _json(
+      'GET',
+      '/api/v1/guides/$guideId/evidence/badge',
+      null,
+    );
     return VerifiedBadge(
       v['guideId'] as String,
       v['verified'] as bool,
@@ -1867,14 +2023,13 @@ class ApiClient implements AppApi {
     required String body,
     String? redactedReference,
     List<String> attachmentIds = const [],
-  }) =>
-      _json('POST', '/api/v1/guides/$guideId/evidence', {
-        'kind': kind,
-        'body': body,
-        if (redactedReference != null && redactedReference.isNotEmpty)
-          'redactedReference': redactedReference,
-        if (attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
-      });
+  }) => _json('POST', '/api/v1/guides/$guideId/evidence', {
+    'kind': kind,
+    'body': body,
+    if (redactedReference != null && redactedReference.isNotEmpty)
+      'redactedReference': redactedReference,
+    if (attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
+  });
 
   @override
   Future<EvidenceAttachmentStageResult> stageEvidenceAttachment({
@@ -1902,10 +2057,13 @@ class ApiClient implements AppApi {
       'Content-Type': 'application/octet-stream',
       if (token != null) 'Authorization': 'Bearer $token',
     };
-    final uri = baseUri.resolve('/api/v1/evidence/attachments/$attachmentId/content');
+    final uri = baseUri.resolve(
+      '/api/v1/evidence/attachments/$attachmentId/content',
+    );
     final response = await _client.put(uri, headers: headers, body: bytes);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (response.statusCode == 401 && token != null) await _tokens.write(null);
+      if (response.statusCode == 401 && token != null)
+        await _tokens.write(null);
       throw ApiException(response.statusCode, _extractError(response.body));
     }
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1913,7 +2071,8 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<List<EvidenceAttachmentSummary>> listEvidenceStagedAttachments() async {
+  Future<List<EvidenceAttachmentSummary>>
+  listEvidenceStagedAttachments() async {
     final v = await _json('GET', '/api/v1/evidence/attachments', null);
     final list = (v as List?) ?? const [];
     return list
@@ -1923,8 +2082,14 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(String evidenceId) async {
-    final v = await _json('GET', '/api/v1/evidence/$evidenceId/attachments', null);
+  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(
+    String evidenceId,
+  ) async {
+    final v = await _json(
+      'GET',
+      '/api/v1/evidence/$evidenceId/attachments',
+      null,
+    );
     final list = (v as List?) ?? const [];
     return list
         .cast<Map<String, dynamic>>()
@@ -1933,18 +2098,34 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<void> removeEvidenceAttachment(String attachmentId) =>
-      _request('DELETE', '/api/v1/evidence/attachments/$attachmentId', null, const {});
+  Future<void> removeEvidenceAttachment(String attachmentId) => _request(
+    'DELETE',
+    '/api/v1/evidence/attachments/$attachmentId',
+    null,
+    const {},
+  );
 
   @override
-  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId) async {
-    final v = await _json('GET', '/api/v1/evidence/attachments/$attachmentId/download', null);
+  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(
+    String attachmentId,
+  ) async {
+    final v = await _json(
+      'GET',
+      '/api/v1/evidence/attachments/$attachmentId/download',
+      null,
+    );
     return EvidenceAttachmentDownload.fromJson(v);
   }
 
   @override
-  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(String evidenceId) async {
-    final v = await _json('GET', '/api/v1/admin/evidence/$evidenceId/attachments', null);
+  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(
+    String evidenceId,
+  ) async {
+    final v = await _json(
+      'GET',
+      '/api/v1/admin/evidence/$evidenceId/attachments',
+      null,
+    );
     final list = (v as List?) ?? const [];
     return list
         .cast<Map<String, dynamic>>()
@@ -1953,8 +2134,14 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(String attachmentId) async {
-    final v = await _json('GET', '/api/v1/admin/evidence/attachments/$attachmentId/download', null);
+  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(
+    String attachmentId,
+  ) async {
+    final v = await _json(
+      'GET',
+      '/api/v1/admin/evidence/attachments/$attachmentId/download',
+      null,
+    );
     return EvidenceAttachmentDownload.fromJson(v);
   }
 
@@ -1977,13 +2164,12 @@ class ApiClient implements AppApi {
     required int tripDays,
     required int totalCostMinorUnits,
     required String currencyCode,
-  }) =>
-      _json('POST', '/api/v1/guides/$guideId/insights', {
-        'partySize': partySize,
-        'tripDays': tripDays,
-        'totalCostMinorUnits': totalCostMinorUnits,
-        'currencyCode': currencyCode,
-      });
+  }) => _json('POST', '/api/v1/guides/$guideId/insights', {
+    'partySize': partySize,
+    'tripDays': tripDays,
+    'totalCostMinorUnits': totalCostMinorUnits,
+    'currencyCode': currencyCode,
+  });
 
   static DateTime? _parseDate(Object? value) {
     if (value is String && value.isNotEmpty) return DateTime.parse(value);
@@ -2011,14 +2197,16 @@ class ApiClient implements AppApi {
       v['refundedOrderCount'] as int,
       ((v['revenue'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => RevenueByCurrency(
-                m['currencyCode'] as String,
-                m['grossMinorUnits'] as int,
-                m['commissionMinorUnits'] as int,
-                m['netMinorUnits'] as int,
-                m['paidOrderCount'] as int,
-                m['refundedOrderCount'] as int,
-              ))
+          .map(
+            (m) => RevenueByCurrency(
+              m['currencyCode'] as String,
+              m['grossMinorUnits'] as int,
+              m['commissionMinorUnits'] as int,
+              m['netMinorUnits'] as int,
+              m['paidOrderCount'] as int,
+              m['refundedOrderCount'] as int,
+            ),
+          )
           .toList(),
       DateTime.parse(v['generatedAt'] as String),
     );
@@ -2026,22 +2214,26 @@ class ApiClient implements AppApi {
 
   @override
   Future<CreatorOrdersResponse> listCreatorOrders({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
-    final path = '/api/v1/creator/dashboard/orders${params.isEmpty ? '' : '?$params'}';
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
+    final path =
+        '/api/v1/creator/dashboard/orders${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return CreatorOrdersResponse(
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => CreatorOrderRow(
-                m['orderId'] as String,
-                m['guideId'] as String,
-                m['guideTitle'] as String,
-                m['amountMinorUnits'] as int,
-                m['currencyCode'] as String,
-                m['status'] as String,
-                DateTime.parse(m['createdAt'] as String),
-              ))
+          .map(
+            (m) => CreatorOrderRow(
+              m['orderId'] as String,
+              m['guideId'] as String,
+              m['guideTitle'] as String,
+              m['amountMinorUnits'] as int,
+              m['currencyCode'] as String,
+              m['status'] as String,
+              DateTime.parse(m['createdAt'] as String),
+            ),
+          )
           .toList(),
     );
   }
@@ -2059,60 +2251,72 @@ class ApiClient implements AppApi {
 
   @override
   Future<AdminAuditResponse> listAdminAudit({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
-    final path = '/api/v1/admin/operations/audit${params.isEmpty ? '' : '?$params'}';
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
+    final path =
+        '/api/v1/admin/operations/audit${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return AdminAuditResponse(
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => AdminAuditEntryRow(
-                m['id'] as String,
-                m['actorUserId'] as String,
-                m['targetUserId'] as String,
-                m['action'] as String,
-                m['reason'] as String,
-                DateTime.parse(m['occurredAt'] as String),
-              ))
+          .map(
+            (m) => AdminAuditEntryRow(
+              m['id'] as String,
+              m['actorUserId'] as String,
+              m['targetUserId'] as String,
+              m['action'] as String,
+              m['reason'] as String,
+              DateTime.parse(m['occurredAt'] as String),
+            ),
+          )
           .toList(),
     );
   }
 
   @override
   Future<AdminUsersResponse> listAdminUsers({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
-    final path = '/api/v1/admin/operations/users${params.isEmpty ? '' : '?$params'}';
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
+    final path =
+        '/api/v1/admin/operations/users${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return AdminUsersResponse(
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => AdminUserRow(
-                m['userId'] as String,
-                m['email'] as String,
-                m['status'] as String,
-                m['emailConfirmed'] as bool,
-                DateTime.parse(m['createdAt'] as String),
-              ))
+          .map(
+            (m) => AdminUserRow(
+              m['userId'] as String,
+              m['email'] as String,
+              m['status'] as String,
+              m['emailConfirmed'] as bool,
+              DateTime.parse(m['createdAt'] as String),
+            ),
+          )
           .toList(),
     );
   }
 
   @override
   Future<AdminCreatorsResponse> listAdminCreators({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
-    final path = '/api/v1/admin/operations/creators${params.isEmpty ? '' : '?$params'}';
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
+    final path =
+        '/api/v1/admin/operations/creators${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return AdminCreatorsResponse(
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => AdminCreatorRow(
-                m['userId'] as String,
-                m['slug'] as String,
-                m['status'] as String,
-                DateTime.parse(m['createdAt'] as String),
-              ))
+          .map(
+            (m) => AdminCreatorRow(
+              m['userId'] as String,
+              m['slug'] as String,
+              m['status'] as String,
+              DateTime.parse(m['createdAt'] as String),
+            ),
+          )
           .toList(),
     );
   }
@@ -2143,13 +2347,18 @@ class ApiClient implements AppApi {
 
   @override
   Future<int> getCreatorFollowersCount(String slug) async {
-    final v = await _json('GET', '/api/v1/creators/$slug/followers/count', null);
+    final v = await _json(
+      'GET',
+      '/api/v1/creators/$slug/followers/count',
+      null,
+    );
     return v['followers'] as int;
   }
 
   @override
   Future<NotificationList> listNotifications({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
     final path = '/api/v1/me/notifications${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return NotificationList(
@@ -2192,7 +2401,8 @@ class ApiClient implements AppApi {
     return _toPreferences(v);
   }
 
-  static NotificationEntry _toNotification(Map<String, dynamic> v) => NotificationEntry(
+  static NotificationEntry _toNotification(Map<String, dynamic> v) =>
+      NotificationEntry(
         v['id'] as String,
         v['kind'] as String,
         v['title'] as String,
@@ -2225,23 +2435,30 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<GuideReleaseList> listGuideReleases(String guideId, {int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
-    final path = '/api/v1/guides/$guideId/releases${params.isEmpty ? '' : '?$params'}';
+  Future<GuideReleaseList> listGuideReleases(
+    String guideId, {
+    int? limit,
+  }) async {
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
+    final path =
+        '/api/v1/guides/$guideId/releases${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return GuideReleaseList(
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => GuideRelease(
-                m['id'] as String,
-                m['guideId'] as String,
-                m['versionNumber'] as int,
-                m['changelog'] as String,
-                m['title'] as String,
-                DateTime.parse(m['publishedAt'] as String),
-                m['nodeSummary'] as String? ?? '',
-              ))
+          .map(
+            (m) => GuideRelease(
+              m['id'] as String,
+              m['guideId'] as String,
+              m['versionNumber'] as int,
+              m['changelog'] as String,
+              m['title'] as String,
+              DateTime.parse(m['publishedAt'] as String),
+              m['nodeSummary'] as String? ?? '',
+            ),
+          )
           .toList(),
     );
   }
@@ -2272,7 +2489,10 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<GuideRelease> publishGuideRelease(String guideId, String changelog) async {
+  Future<GuideRelease> publishGuideRelease(
+    String guideId,
+    String changelog,
+  ) async {
     final v = await _json('POST', '/api/v1/guides/$guideId/releases', {
       'changelog': changelog,
     });
@@ -2289,7 +2509,8 @@ class ApiClient implements AppApi {
 
   @override
   Future<PluginList> listPlugins({int? limit}) async {
-    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'}).query;
+    final params = Uri(queryParameters: {if (limit != null) 'limit': '$limit'})
+        .query;
     final path = '/api/v1/plugins${params.isEmpty ? '' : '?$params'}';
     final v = await _json('GET', path, null);
     return PluginList(
@@ -2318,9 +2539,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> installPlugin(String pluginId, List<String> scopes) =>
-      _json('POST', '/api/v1/me/plugins/$pluginId/install', {
-        'scopes': scopes,
-      });
+      _json('POST', '/api/v1/me/plugins/$pluginId/install', {'scopes': scopes});
 
   @override
   Future<void> enablePlugin(String pluginId) =>
@@ -2335,14 +2554,14 @@ class ApiClient implements AppApi {
       _request('DELETE', '/api/v1/me/plugins/$pluginId', null, const {});
 
   static PluginSummary _toPlugin(Map<String, dynamic> v) => PluginSummary(
-        v['id'] as String,
-        v['slug'] as String,
-        v['displayName'] as String,
-        v['version'] as String,
-        v['publisher'] as String,
-        v['status'] as String,
-        DateTime.parse(v['createdAt'] as String),
-      );
+    v['id'] as String,
+    v['slug'] as String,
+    v['displayName'] as String,
+    v['version'] as String,
+    v['publisher'] as String,
+    v['status'] as String,
+    DateTime.parse(v['createdAt'] as String),
+  );
 
   static PluginInstallation _toInstallation(Map<String, dynamic> v) =>
       PluginInstallation(
@@ -2358,13 +2577,21 @@ class ApiClient implements AppApi {
   @override
   Future<TenantDashboard> getMyTenant() async {
     final v = await _json('GET', '/api/v1/me/tenant', null);
-    return TenantDashboard(_toTenant(v['tenant'] as Map<String, dynamic>), _toSubscription(v['subscription'] as Map<String, dynamic>));
+    return TenantDashboard(
+      _toTenant(v['tenant'] as Map<String, dynamic>),
+      _toSubscription(v['subscription'] as Map<String, dynamic>),
+    );
   }
 
   @override
   Future<TenantDashboard> updateMySubscription(String plan) async {
-    final v = await _json('POST', '/api/v1/me/tenant/subscription', {'plan': plan});
-    return TenantDashboard(_toTenant(v['tenant'] as Map<String, dynamic>), _toSubscription(v['subscription'] as Map<String, dynamic>));
+    final v = await _json('POST', '/api/v1/me/tenant/subscription', {
+      'plan': plan,
+    });
+    return TenantDashboard(
+      _toTenant(v['tenant'] as Map<String, dynamic>),
+      _toSubscription(v['subscription'] as Map<String, dynamic>),
+    );
   }
 
   @override
@@ -2374,13 +2601,15 @@ class ApiClient implements AppApi {
       v['total'] as int,
       ((v['items'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => QuotaRow(
-                m['metric'] as String,
-                m['used'] as int,
-                m['limit'] as int,
-                DateTime.parse(m['periodStart'] as String),
-                DateTime.parse(m['periodEnd'] as String),
-              ))
+          .map(
+            (m) => QuotaRow(
+              m['metric'] as String,
+              m['used'] as int,
+              m['limit'] as int,
+              DateTime.parse(m['periodStart'] as String),
+              DateTime.parse(m['periodEnd'] as String),
+            ),
+          )
           .toList(),
     );
   }
@@ -2394,44 +2623,64 @@ class ApiClient implements AppApi {
       v['locale'] as String?,
       ((v['purchases'] as List?) ?? const [])
           .map((item) => item as Map<String, dynamic>)
-          .map((m) => ExportPurchaseRow(
-                m['guideId'] as String,
-                m['orderId'] as String,
-                DateTime.parse(m['grantedAt'] as String),
-                _parseNullableDate(m['revokedAt']),
-              ))
+          .map(
+            (m) => ExportPurchaseRow(
+              m['guideId'] as String,
+              m['orderId'] as String,
+              DateTime.parse(m['grantedAt'] as String),
+              _parseNullableDate(m['revokedAt']),
+            ),
+          )
           .toList(),
     );
   }
 
   static TenantSummary _toTenant(Map<String, dynamic> v) => TenantSummary(
-        v['id'] as String,
-        v['slug'] as String,
-        v['displayName'] as String,
-        v['primaryDomain'] as String,
-        v['status'] as String,
-        v['brandingJson'] as String? ?? '{}',
-        DateTime.parse(v['createdAt'] as String),
-      );
+    v['id'] as String,
+    v['slug'] as String,
+    v['displayName'] as String,
+    v['primaryDomain'] as String,
+    v['status'] as String,
+    v['brandingJson'] as String? ?? '{}',
+    DateTime.parse(v['createdAt'] as String),
+  );
 
   static Subscription _toSubscription(Map<String, dynamic> v) => Subscription(
-        v['id'] as String,
-        v['plan'] as String,
-        v['status'] as String,
-        DateTime.parse(v['startsAt'] as String),
-        _parseNullableDate(v['endsAt']),
-      );
+    v['id'] as String,
+    v['plan'] as String,
+    v['status'] as String,
+    DateTime.parse(v['startsAt'] as String),
+    _parseNullableDate(v['endsAt']),
+  );
 
   @override
   Future<ImportJobDetail> submitTextImport(String sourceText) async {
-    final v = await _json('POST', '/api/v1/me/imports/text', {'sourceText': sourceText});
-    return ImportJobDetail(_toImportJob(v['job'] as Map<String, dynamic>), v['draft'] == null ? null : _toImportDraft(v['draft'] as Map<String, dynamic>));
+    final v = await _json('POST', '/api/v1/me/imports/text', {
+      'sourceText': sourceText,
+    });
+    return ImportJobDetail(
+      _toImportJob(v['job'] as Map<String, dynamic>),
+      v['draft'] == null
+          ? null
+          : _toImportDraft(v['draft'] as Map<String, dynamic>),
+    );
   }
 
   @override
-  Future<ImportJobDetail> submitObjectImport(String objectKey, String kind) async {
-    final v = await _json('POST', '/api/v1/me/imports/object', {'objectKey': objectKey, 'kind': kind});
-    return ImportJobDetail(_toImportJob(v['job'] as Map<String, dynamic>), v['draft'] == null ? null : _toImportDraft(v['draft'] as Map<String, dynamic>));
+  Future<ImportJobDetail> submitObjectImport(
+    String objectKey,
+    String kind,
+  ) async {
+    final v = await _json('POST', '/api/v1/me/imports/object', {
+      'objectKey': objectKey,
+      'kind': kind,
+    });
+    return ImportJobDetail(
+      _toImportJob(v['job'] as Map<String, dynamic>),
+      v['draft'] == null
+          ? null
+          : _toImportDraft(v['draft'] as Map<String, dynamic>),
+    );
   }
 
   @override
@@ -2441,7 +2690,10 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<ImportDraft> approveImportDraft(String draftId, String? guideId) async {
+  Future<ImportDraft> approveImportDraft(
+    String draftId,
+    String? guideId,
+  ) async {
     final v = await _json('POST', '/api/v1/me/drafts/$draftId/approve', {
       if (guideId != null) 'guideId': guideId,
     });
@@ -2455,7 +2707,11 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<Translation> createTranslation(String sourceDraftId, String locale, String body) async {
+  Future<Translation> createTranslation(
+    String sourceDraftId,
+    String locale,
+    String body,
+  ) async {
     final v = await _json('POST', '/api/v1/me/translations', {
       'sourceDraftId': sourceDraftId,
       'locale': locale,
@@ -2469,55 +2725,57 @@ class ApiClient implements AppApi {
     final v = await _json('GET', '/api/v1/me/ai-quotas', null);
     return (v as List)
         .map((item) => item as Map<String, dynamic>)
-        .map((m) => QuotaRow(
-              m['metric'] as String,
-              m['used'] as int,
-              m['limit'] as int,
-              DateTime.parse(m['periodStart'] as String),
-              DateTime.parse(m['periodEnd'] as String),
-            ))
+        .map(
+          (m) => QuotaRow(
+            m['metric'] as String,
+            m['used'] as int,
+            m['limit'] as int,
+            DateTime.parse(m['periodStart'] as String),
+            DateTime.parse(m['periodEnd'] as String),
+          ),
+        )
         .toList();
   }
 
   static ImportJob _toImportJob(Map<String, dynamic> v) => ImportJob(
-        v['id'] as String,
-        v['userId'] as String,
-        v['kind'] as String,
-        v['status'] as String,
-        DateTime.parse(v['submittedAt'] as String),
-        _parseNullableDate(v['completedAt']),
-        v['failureReason'] as String? ?? '',
-        (v['providerName'] as String?) ?? '',
-        (v['modelName'] as String?) ?? '',
-        (v['schemaVersion'] as String?) ?? '',
-        (v['failureCode'] as String?) ?? '',
-      );
+    v['id'] as String,
+    v['userId'] as String,
+    v['kind'] as String,
+    v['status'] as String,
+    DateTime.parse(v['submittedAt'] as String),
+    _parseNullableDate(v['completedAt']),
+    v['failureReason'] as String? ?? '',
+    (v['providerName'] as String?) ?? '',
+    (v['modelName'] as String?) ?? '',
+    (v['schemaVersion'] as String?) ?? '',
+    (v['failureCode'] as String?) ?? '',
+  );
 
   static ImportDraft _toImportDraft(Map<String, dynamic> v) => ImportDraft(
-        v['id'] as String,
-        v['importJobId'] as String,
-        v['suggestedTitle'] as String,
-        v['provenanceJson'] as String,
-        v['status'] as String,
-        DateTime.parse(v['createdAt'] as String),
-        v['suggestedNodesJson'] as String,
-        (v['providerName'] as String?) ?? '',
-        (v['modelName'] as String?) ?? '',
-        (v['schemaVersion'] as String?) ?? '',
-      );
+    v['id'] as String,
+    v['importJobId'] as String,
+    v['suggestedTitle'] as String,
+    v['provenanceJson'] as String,
+    v['status'] as String,
+    DateTime.parse(v['createdAt'] as String),
+    v['suggestedNodesJson'] as String,
+    (v['providerName'] as String?) ?? '',
+    (v['modelName'] as String?) ?? '',
+    (v['schemaVersion'] as String?) ?? '',
+  );
 
   static Translation _toTranslation(Map<String, dynamic> v) => Translation(
-        v['id'] as String,
-        v['sourceDraftId'] as String,
-        v['locale'] as String,
-        v['body'] as String,
-        v['status'] as String,
-        DateTime.parse(v['createdAt'] as String),
-        _parseNullableDate(v['updatedAt']),
-        (v['providerName'] as String?) ?? '',
-        (v['modelName'] as String?) ?? '',
-        (v['schemaVersion'] as String?) ?? '',
-      );
+    v['id'] as String,
+    v['sourceDraftId'] as String,
+    v['locale'] as String,
+    v['body'] as String,
+    v['status'] as String,
+    DateTime.parse(v['createdAt'] as String),
+    _parseNullableDate(v['updatedAt']),
+    (v['providerName'] as String?) ?? '',
+    (v['modelName'] as String?) ?? '',
+    (v['schemaVersion'] as String?) ?? '',
+  );
 
   @override
   Future<List<LicensePolicy>> listMyLicensePolicies() async {
@@ -2562,11 +2820,15 @@ class ApiClient implements AppApi {
     required String licensePolicyId,
     String? attributionJson,
   }) async {
-    final v = await _json('POST', '/api/v1/guides/$childGuideId/remix/ancestry', {
-      'parentGuideId': parentGuideId,
-      'licensePolicyId': licensePolicyId,
-      if (attributionJson != null) 'attributionJson': attributionJson,
-    });
+    final v = await _json(
+      'POST',
+      '/api/v1/guides/$childGuideId/remix/ancestry',
+      {
+        'parentGuideId': parentGuideId,
+        'licensePolicyId': licensePolicyId,
+        if (attributionJson != null) 'attributionJson': attributionJson,
+      },
+    );
     return _toAncestry(v);
   }
 
@@ -2591,14 +2853,19 @@ class ApiClient implements AppApi {
     required String decision,
     String? reason,
   }) async {
-    final v = await _json('POST', '/api/v1/admin/remix-approvals/$ancestryId/decide', {
-      'decision': decision,
-      if (reason != null && reason.isNotEmpty) 'reason': reason,
-    });
+    final v = await _json(
+      'POST',
+      '/api/v1/admin/remix-approvals/$ancestryId/decide',
+      {
+        'decision': decision,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
+    );
     return _toAncestry(v);
   }
 
-  static LicensePolicy _toLicensePolicy(Map<String, dynamic> v) => LicensePolicy(
+  static LicensePolicy _toLicensePolicy(Map<String, dynamic> v) =>
+      LicensePolicy(
         v['id'] as String,
         v['ownerUserId'] as String,
         v['slug'] as String,
@@ -2611,20 +2878,23 @@ class ApiClient implements AppApi {
       );
 
   static RemixAncestry _toAncestry(Map<String, dynamic> v) => RemixAncestry(
-        v['id'] as String,
-        v['childGuideId'] as String,
-        v['parentGuideId'] as String,
-        v['licensePolicyId'] as String,
-        v['attributionJson'] as String,
-        v['decision'] as String,
-        DateTime.parse(v['createdAt'] as String),
-        _parseNullableDate(v['decidedAt']),
-      );
+    v['id'] as String,
+    v['childGuideId'] as String,
+    v['parentGuideId'] as String,
+    v['licensePolicyId'] as String,
+    v['attributionJson'] as String,
+    v['decision'] as String,
+    DateTime.parse(v['createdAt'] as String),
+    _parseNullableDate(v['decidedAt']),
+  );
 
   @override
   Future<SystemDistributionInfo> getSystemInfo() async {
     final v = await _json('GET', '/api/v1/system/info', null);
-    return SystemDistributionInfo(v['version'] as String, v['migrationsRegistered'] as int);
+    return SystemDistributionInfo(
+      v['version'] as String,
+      v['migrationsRegistered'] as int,
+    );
   }
 
   @override
@@ -2645,7 +2915,9 @@ class ApiClient implements AppApi {
 
   @override
   Future<BackupSnapshot> triggerSystemBackup({String? label}) async {
-    final v = await _json('POST', '/api/v1/admin/system/backup', {'label': label ?? ''});
+    final v = await _json('POST', '/api/v1/admin/system/backup', {
+      'label': label ?? '',
+    });
     return BackupSnapshot(
       v['id'] as String,
       v['label'] as String,
@@ -2681,11 +2953,11 @@ class ApiClient implements AppApi {
   }
 
   static FeatureFlag _toFeatureFlag(Map<String, dynamic> v) => FeatureFlag(
-        key: v['key'] as String,
-        enabled: v['enabled'] as bool,
-        value: v['value'] as String,
-        updatedAt: DateTime.parse(v['updatedAt'] as String),
-      );
+    key: v['key'] as String,
+    enabled: v['enabled'] as bool,
+    value: v['value'] as String,
+    updatedAt: DateTime.parse(v['updatedAt'] as String),
+  );
 
   Future<Map<String, dynamic>> _json(
     String method,
@@ -2693,6 +2965,22 @@ class ApiClient implements AppApi {
     Map<String, dynamic>? body,
   ) async {
     final value = await _request(method, path, body, const {});
+    return value as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> _jsonWithCancel(
+    String method,
+    String path,
+    Map<String, dynamic>? body, {
+    CancelToken? cancelToken,
+  }) async {
+    final value = await _request(
+      method,
+      path,
+      body,
+      const {},
+      cancelToken: cancelToken,
+    );
     return value as Map<String, dynamic>;
   }
 
@@ -2710,8 +2998,9 @@ class ApiClient implements AppApi {
     String method,
     String path,
     Map<String, dynamic>? body,
-    Map<String, String> extraHeaders,
-  ) async {
+    Map<String, String> extraHeaders, {
+    CancelToken? cancelToken,
+  }) async {
     final token = await _tokens.read();
     final headers = {
       'Content-Type': 'application/json',
@@ -2719,23 +3008,42 @@ class ApiClient implements AppApi {
       ...extraHeaders,
     };
     final uri = baseUri.resolve(path);
-    final response = switch (method) {
-      'GET' => await _client.get(uri, headers: headers),
-      'POST' => await _client.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(body),
-      ),
-      'PUT' => await _client.put(uri, headers: headers, body: jsonEncode(body)),
-      'DELETE' => await _client.delete(uri, headers: headers, body: jsonEncode(body)),
+    final encodedBody = body == null ? null : jsonEncode(body);
+    final future = switch (method) {
+      'GET' => _client.get(uri, headers: headers),
+      'POST' => _client.post(uri, headers: headers, body: encodedBody),
+      'PUT' => _client.put(uri, headers: headers, body: encodedBody),
+      'PATCH' => _client.patch(uri, headers: headers, body: encodedBody),
+      'DELETE' => _client.delete(uri, headers: headers, body: encodedBody),
       _ => throw ArgumentError.value(method),
     };
+    final response = await _withCancel(future, cancelToken);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (response.statusCode == 401 && token != null) await _tokens.write(null);
+      if (response.statusCode == 401 && token != null)
+        await _tokens.write(null);
       throw ApiException(response.statusCode, _extractError(response.body));
     }
     if (response.body.isEmpty) return <String, dynamic>{};
     return jsonDecode(response.body);
+  }
+
+  /// Race an in-flight HTTP call against an optional [CancelToken]. When
+  /// the caller cancels, the underlying future is abandoned and a
+  /// [CancelledApiCall] is thrown so screens can short-circuit UI updates.
+  Future<http.Response> _withCancel(
+    Future<http.Response> future,
+    CancelToken? cancelToken,
+  ) async {
+    if (cancelToken == null) return future;
+    if (cancelToken.isCancelled) throw const CancelledApiCall();
+    final completer = Completer<http.Response>();
+    void onCancel(Object? _) {
+      if (completer.isCompleted) return;
+      completer.completeError(const CancelledApiCall());
+    }
+
+    cancelToken._completer.future.then<void>(onCancel, onError: onCancel);
+    return Future.any(<Future<http.Response>>[future, completer.future]);
   }
 
   String _extractError(String body) {
@@ -2744,7 +3052,8 @@ class ApiClient implements AppApi {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
         // Handle ASP.NET Core ValidationProblem format with 'errors' map
-        if (decoded.containsKey('errors') && decoded['errors'] is Map<String, dynamic>) {
+        if (decoded.containsKey('errors') &&
+            decoded['errors'] is Map<String, dynamic>) {
           final errors = decoded['errors'] as Map<String, dynamic>;
           final messages = <String>[];
           errors.forEach((key, value) {
@@ -2757,11 +3066,15 @@ class ApiClient implements AppApi {
           if (messages.isNotEmpty) return messages.join('\n');
         }
         // Handle ProblemDetails 'detail' field
-        if (decoded.containsKey('detail') && decoded['detail'] is String && decoded['detail'].isNotEmpty) {
+        if (decoded.containsKey('detail') &&
+            decoded['detail'] is String &&
+            decoded['detail'].isNotEmpty) {
           return decoded['detail'].toString();
         }
         // Handle generic 'message' field
-        if (decoded.containsKey('message') && decoded['message'] is String && decoded['message'].isNotEmpty) {
+        if (decoded.containsKey('message') &&
+            decoded['message'] is String &&
+            decoded['message'].isNotEmpty) {
           return decoded['message'].toString();
         }
       }

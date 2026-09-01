@@ -111,7 +111,8 @@ class _TrippifyAppState extends State<TrippifyApp> {
       '/creator/dashboard': (_) => CreatorDashboardScreen(api: widget.api),
       '/admin/operations': (_) => AdminOperationsScreen(api: widget.api),
       '/notifications': (_) => NotificationsScreen(api: widget.api),
-      '/notification-preferences': (_) => NotificationPreferencesScreen(api: widget.api),
+      '/notification-preferences': (_) =>
+          NotificationPreferencesScreen(api: widget.api),
       '/plugins': (_) => PluginCatalogScreen(api: widget.api),
       '/tenant': (_) => TenantDashboardScreen(api: widget.api),
       '/assisted-import': (_) => AssistedImportScreen(api: widget.api),
@@ -156,7 +157,8 @@ class _ShellRoute extends StatelessWidget {
         }
       },
       child: child,
-      onSignedOut: () => Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false),
+      onSignedOut: () =>
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false),
     );
   }
 }
@@ -208,7 +210,8 @@ class _SystemScreenState extends State<SystemScreen> {
               onPressed: () async {
                 final navigator = Navigator.of(context);
                 await widget.session.signOut();
-                if (mounted) navigator.pushNamedAndRemoveUntil('/', (_) => false);
+                if (mounted)
+                  navigator.pushNamedAndRemoveUntil('/', (_) => false);
               },
             ),
         ],
@@ -216,8 +219,8 @@ class _SystemScreenState extends State<SystemScreen> {
       body: _isLoading
           ? const LoadingState()
           : _userSummary == null
-              ? _buildAnonymousHome(context)
-              : _buildAuthenticatedHome(context),
+          ? _buildAnonymousHome(context)
+          : _buildAuthenticatedHome(context),
     );
   }
 
@@ -230,24 +233,29 @@ class _SystemScreenState extends State<SystemScreen> {
           if (widget.session.state.notice != null) ...[
             Semantics(
               liveRegion: true,
-              child: Text(widget.session.state.notice!, textAlign: TextAlign.center),
+              child: Text(
+                widget.session.state.notice!,
+                textAlign: TextAlign.center,
+              ),
             ),
             const SizedBox(height: 16),
           ],
-          Icon(Icons.person_outline, size: 64, color: colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.person_outline,
+            size: 64,
+            color: colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 16),
           Text(
             'Welcome to Trippify',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+            style: Theme.of(context).textTheme.headlineMedium
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           Text(
             'Please sign in to access your home screen',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+            style: Theme.of(context).textTheme.bodyLarge
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
           FilledButton(
@@ -306,16 +314,15 @@ class _SystemScreenState extends State<SystemScreen> {
             Text(
               _userSummary!.displayName,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                color: colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               _userSummary!.accountStatus,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -336,9 +343,9 @@ class _SystemScreenState extends State<SystemScreen> {
             Text(
               'Account Summary',
               style: theme.textTheme.titleLarge?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 16),
             Row(
@@ -391,11 +398,21 @@ class _SystemScreenState extends State<SystemScreen> {
     children: [
       _actionButton(context, '/guides', Icons.menu_book, 'My guides'),
       _actionButton(context, '/discover', Icons.explore, 'Discover guides'),
-      _actionButton(context, '/library', Icons.collections_bookmark, 'My library'),
+      _actionButton(
+        context,
+        '/library',
+        Icons.collections_bookmark,
+        'My library',
+      ),
     ],
   );
 
-  Widget _actionButton(BuildContext context, String route, IconData icon, String label) => FilledButton.icon(
+  Widget _actionButton(
+    BuildContext context,
+    String route,
+    IconData icon,
+    String label,
+  ) => FilledButton.icon(
     onPressed: () => Navigator.pushNamed(context, route),
     icon: Icon(icon, size: 20),
     label: Text(label),
@@ -637,16 +654,20 @@ class _DayRouteSection extends StatefulWidget {
 }
 
 class _DayRouteSectionState extends State<_DayRouteSection> {
-  late Future<DayRoute> _route = widget.api.getDayRoute(widget.guideId, widget.dayPosition);
+  late Future<DayRoute> _route = widget.api.getDayRoute(
+    widget.guideId,
+    widget.dayPosition,
+  );
 
   void _retry() => setState(() {
-        _route = widget.api.getDayRoute(widget.guideId, widget.dayPosition);
-      });
+    _route = widget.api.getDayRoute(widget.guideId, widget.dayPosition);
+  });
 
   @override
   void didUpdateWidget(covariant _DayRouteSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.guideId != widget.guideId || oldWidget.dayPosition != widget.dayPosition) {
+    if (oldWidget.guideId != widget.guideId ||
+        oldWidget.dayPosition != widget.dayPosition) {
       _retry();
     }
   }
@@ -667,10 +688,10 @@ class _DayRouteSectionState extends State<_DayRouteSection> {
           final error = snapshot.error;
           final status = error is ApiException
               ? (error.statusCode == 401
-                  ? ProviderStatus.denied
-                  : (error.statusCode == 503
-                      ? ProviderStatus.offline
-                      : ProviderStatus.unavailable))
+                    ? ProviderStatus.denied
+                    : (error.statusCode == 503
+                          ? ProviderStatus.offline
+                          : ProviderStatus.unavailable))
               : ProviderStatus.unavailable;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,14 +706,18 @@ class _DayRouteSectionState extends State<_DayRouteSection> {
         }
         final route = snapshot.data!;
         final markers = route.markers
-            .map((m) => MapMarkerState(
-                  label: m.name,
-                  subtitle: m.latitude == null || m.longitude == null
-                      ? 'Unresolved location'
-                      : '${m.latitude!.toStringAsFixed(4)}, ${m.longitude!.toStringAsFixed(4)}',
-                ))
+            .map(
+              (m) => MapMarkerState(
+                label: m.name,
+                subtitle: m.latitude == null || m.longitude == null
+                    ? 'Unresolved location'
+                    : '${m.latitude!.toStringAsFixed(4)}, ${m.longitude!.toStringAsFixed(4)}',
+              ),
+            )
             .toList();
-        final unresolved = route.markers.where((m) => m.latitude == null || m.longitude == null).length;
+        final unresolved = route.markers
+            .where((m) => m.latitude == null || m.longitude == null)
+            .length;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -715,8 +740,8 @@ class _DayRouteSectionState extends State<_DayRouteSection> {
                 subtitle: Text(
                   marker.latitude == null || marker.longitude == null
                       ? marker.geocodeStatus == 'Unresolved'
-                          ? 'Provider could not resolve this location.'
-                          : 'No coordinates'
+                            ? 'Provider could not resolve this location.'
+                            : 'No coordinates'
                       : '${marker.latitude!.toStringAsFixed(4)}, ${marker.longitude!.toStringAsFixed(4)}',
                 ),
                 trailing: marker.geocodeAttribution == null
@@ -729,7 +754,9 @@ class _DayRouteSectionState extends State<_DayRouteSection> {
             for (final segment in route.segments)
               ListTile(
                 leading: const Icon(Icons.route_outlined),
-                title: Text('${segment.originName} → ${segment.destinationName}'),
+                title: Text(
+                  '${segment.originName} → ${segment.destinationName}',
+                ),
                 subtitle: Text(
                   '${segment.mode} · ${segment.durationMinutes} min',
                 ),
@@ -915,9 +942,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       '${item.countryCode} · ${item.tripDays} days',
                     ),
                     trailing: item.pricing == 'paid'
-                        ? Text(
-                            '${item.priceMinorUnits} ${item.currencyCode}',
-                          )
+                        ? Text('${item.priceMinorUnits} ${item.currencyCode}')
                         : const Text('Free'),
                     onTap: () => Navigator.push(
                       context,
@@ -968,20 +993,24 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
       setState(
         () => status = session.checkoutUrl.isEmpty
             ? 'Checkout started. Pay ${session.amountMinorUnits} '
-                '${session.currencyCode} to unlock.'
+                  '${session.currencyCode} to unlock.'
             : 'Open this URL to pay: ${session.checkoutUrl}',
       );
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.statusCode == 409) {
-        setState(() => status = 'This checkout attempt was already used for a different purchase. Start a new checkout to continue.');
+        setState(
+          () => status = 'This checkout attempt was already used for a different purchase. Start a new checkout to continue.',
+        );
       } else {
         setState(() => status = _checkoutFailureMessage(error));
       }
     } catch (error) {
       if (!mounted) return;
       setState(() => status = _checkoutFailureMessage(error));
-      messenger.showSnackBar(const SnackBar(content: Text('Checkout failed. Retry to resume.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Checkout failed. Retry to resume.')),
+      );
     }
   }
 
@@ -996,8 +1025,10 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
 
   String _checkoutFailureMessage(Object error) {
     if (error is ApiException) {
-      if (error.statusCode == 503) return 'Payments are unavailable right now. Please retry shortly.';
-      if (error.statusCode == 401 || error.statusCode == 403) return 'Sign in again to continue checkout.';
+      if (error.statusCode == 503)
+        return 'Payments are unavailable right now. Please retry shortly.';
+      if (error.statusCode == 401 || error.statusCode == 403)
+        return 'Sign in again to continue checkout.';
     }
     return 'Checkout failed. Please retry.';
   }
@@ -1133,7 +1164,8 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
               onPressed: () => toggleFavorite(data),
               child: Text(favorite ? 'Unfavorite' : 'Favorite'),
             ),
-            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+            if (status != null)
+              Semantics(liveRegion: true, child: Text(status!)),
             for (final day in data.days) ...[
               Text(day.title, style: Theme.of(context).textTheme.titleMedium),
               for (final node in day.nodes)
@@ -1156,7 +1188,12 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
               ),
             const SizedBox(height: 16),
             sectionTitle(context, 'Verified trips'),
-            _VerifiedTripsSection(api: widget.api, guideId: data.id, unlocked: data.unlocked, onSubmit: (message) => setState(() => status = message)),
+            _VerifiedTripsSection(
+              api: widget.api,
+              guideId: data.id,
+              unlocked: data.unlocked,
+              onSubmit: (message) => setState(() => status = message),
+            ),
             const SizedBox(height: 16),
             sectionTitle(context, 'Release history'),
             _ReleasesSection(api: widget.api, guideId: data.id),
@@ -1201,71 +1238,72 @@ class _ReleasesSectionState extends State<_ReleasesSection> {
   }
 
   Widget _freshnessView() => FutureBuilder<GuideFreshness>(
-        future: freshness,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError || !snapshot.hasData) {
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: ErrorState(
-                message: 'Freshness data is unavailable.',
-                onRetry: _refresh,
-              ),
-            );
-          }
-          final value = snapshot.data!;
-          final label = value.latestVersion == 0
-              ? 'No releases yet.'
-              : 'Last updated ${value.daysSinceLatest ?? 0} day(s) ago (v${value.latestVersion}).';
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Semantics(
-              label: 'Freshness',
-              child: Text(label),
-            ),
-          );
-        },
+    future: freshness,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(
+          padding: EdgeInsets.all(8),
+          child: SizedBox(
+            height: 16,
+            width: 16,
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+      if (snapshot.hasError || !snapshot.hasData) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: ErrorState(
+            message: 'Freshness data is unavailable.',
+            onRetry: _refresh,
+          ),
+        );
+      }
+      final value = snapshot.data!;
+      final label = value.latestVersion == 0
+          ? 'No releases yet.'
+          : 'Last updated ${value.daysSinceLatest ?? 0} day(s) ago (v${value.latestVersion}).';
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Semantics(label: 'Freshness', child: Text(label)),
       );
+    },
+  );
 
   Widget _releasesView() => FutureBuilder<GuideReleaseList>(
-        future: releases,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Release history unavailable.'),
-            );
-          }
-          final items = snapshot.data!.items;
-          if (items.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No releases yet.'),
-            );
-          }
-          return Column(
-            children: [
-              for (final release in items)
-                ListTile(
-                  leading: CircleAvatar(child: Text('v${release.versionNumber}')),
-                  title: Text(release.title),
-                  subtitle: Text(release.changelog),
-                ),
-            ],
-          );
-        },
+    future: releases,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Release history unavailable.'),
+        );
+      }
+      final items = snapshot.data!.items;
+      if (items.isEmpty) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('No releases yet.'),
+        );
+      }
+      return Column(
+        children: [
+          for (final release in items)
+            ListTile(
+              leading: CircleAvatar(child: Text('v${release.versionNumber}')),
+              title: Text(release.title),
+              subtitle: Text(release.changelog),
+            ),
+        ],
       );
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1309,7 +1347,13 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
   Future<void> _load() async {
     try {
       final publicInfo = await widget.api.getSystemInfo();
-      SystemStatus adminStatus = SystemStatus(publicInfo.version, 0, 0, const [], const []);
+      SystemStatus adminStatus = SystemStatus(
+        publicInfo.version,
+        0,
+        0,
+        const [],
+        const [],
+      );
       List<FeatureFlag> adminFlags = const <FeatureFlag>[];
       try {
         adminStatus = await widget.api.getSystemStatus();
@@ -1341,7 +1385,8 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
   Future<void> _backup() async {
     try {
       final snap = await widget.api.triggerSystemBackup(label: 'manual');
-      if (mounted) setState(() => statusMessage = 'Backup ${snap.label} captured.');
+      if (mounted)
+        setState(() => statusMessage = 'Backup ${snap.label} captured.');
     } catch (_) {
       if (mounted) setState(() => statusMessage = 'Cannot create backup.');
     }
@@ -1349,7 +1394,11 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
 
   Future<void> _toggle(FeatureFlag flag) async {
     try {
-      await widget.api.upsertFeatureFlag(key: flag.key, enabled: !flag.enabled, value: flag.value);
+      await widget.api.upsertFeatureFlag(
+        key: flag.key,
+        enabled: !flag.enabled,
+        value: flag.value,
+      );
       _load();
     } catch (_) {
       if (mounted) setState(() => statusMessage = 'Cannot update flag.');
@@ -1369,11 +1418,16 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
             Text(info?.version ?? 'Unknown'),
             const SizedBox(height: 16),
             sectionTitle(context, 'Migrations'),
-            Text('Applied ${status?.appliedCount ?? 0} · Pending ${status?.pendingCount ?? 0}'),
+            Text(
+              'Applied ${status?.appliedCount ?? 0} · Pending ${status?.pendingCount ?? 0}',
+            ),
             const SizedBox(height: 16),
             FilledButton(onPressed: _upgrade, child: const Text('Run upgrade')),
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: _backup, child: const Text('Capture backup')),
+            OutlinedButton(
+              onPressed: _backup,
+              child: const Text('Capture backup'),
+            ),
             const SizedBox(height: 16),
             sectionTitle(context, 'Feature flags'),
             if (flags.isEmpty)
@@ -1461,14 +1515,16 @@ class _LicensePanelScreenState extends State<LicensePanelScreen> {
                 ListTile(
                   title: Text(p.displayName),
                   subtitle: Text(
-                      'Royalty ${p.royaltyPercent}% · ${p.allowCommercial ? "commercial OK" : "no commercial"}'),
+                    'Royalty ${p.royaltyPercent}% · ${p.allowCommercial ? "commercial OK" : "no commercial"}',
+                  ),
                 ),
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => _seed('default'),
               child: const Text('Create default license'),
             ),
-            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+            if (status != null)
+              Semantics(liveRegion: true, child: Text(status!)),
           ],
         ),
       ),
@@ -1549,7 +1605,13 @@ class _TenantDashboardScreenState extends State<TenantDashboardScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Semantics(label: 'Tenant summary', child: Text(t.displayName, style: Theme.of(context).textTheme.titleLarge)),
+          Semantics(
+            label: 'Tenant summary',
+            child: Text(
+              t.displayName,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
           Text(t.primaryDomain.isEmpty ? 'No custom domain' : t.primaryDomain),
           Text('Plan ${s.plan} (${s.status})'),
           const SizedBox(height: 16),
@@ -1624,20 +1686,28 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       });
       _loadQuotas();
     } catch (error) {
-      setState(() => status = _quotaAwareMessage(error, 'Cannot submit text import.'));
+      setState(
+        () => status = _quotaAwareMessage(error, 'Cannot submit text import.'),
+      );
     }
   }
 
   Future<void> _submitObject() async {
     try {
-      final detail = await widget.api.submitObjectImport(objectKey.text.trim(), 'Photo');
+      final detail = await widget.api.submitObjectImport(
+        objectKey.text.trim(),
+        'Photo',
+      );
       setState(() {
         draft = detail.draft;
         status = _describeJob(detail.job.status, detail.job.failureCode);
       });
       _loadQuotas();
     } catch (error) {
-      setState(() => status = _quotaAwareMessage(error, 'Cannot submit object import.'));
+      setState(
+        () =>
+            status = _quotaAwareMessage(error, 'Cannot submit object import.'),
+      );
     }
   }
 
@@ -1646,10 +1716,14 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
       case 'Completed':
         return 'Import ready for review.';
       case 'Failed':
-        if (failureCode == 'provider-disabled') return 'AI assistance is currently disabled.';
-        if (failureCode == 'provider-unavailable') return 'AI provider is unavailable. Please retry shortly.';
-        if (failureCode == 'schema-mismatch') return 'AI provider returned invalid output; the draft was not created.';
-        if (failureCode == 'timeout') return 'AI provider timed out; the draft was not created.';
+        if (failureCode == 'provider-disabled')
+          return 'AI assistance is currently disabled.';
+        if (failureCode == 'provider-unavailable')
+          return 'AI provider is unavailable. Please retry shortly.';
+        if (failureCode == 'schema-mismatch')
+          return 'AI provider returned invalid output; the draft was not created.';
+        if (failureCode == 'timeout')
+          return 'AI provider timed out; the draft was not created.';
         return 'Import failed (${failureCode.isEmpty ? 'unknown' : failureCode}).';
       default:
         return 'Import $status.';
@@ -1685,11 +1759,17 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
   Future<void> _translate(String locale) async {
     if (draft == null) return;
     try {
-      final translation = await widget.api.createTranslation(draft!.id, locale, 'Translated version');
+      final translation = await widget.api.createTranslation(
+        draft!.id,
+        locale,
+        'Translated version',
+      );
       setState(() => status = 'Translation saved (${translation.locale}).');
       _loadQuotas();
     } catch (error) {
-      setState(() => status = _quotaAwareMessage(error, 'Cannot save translation.'));
+      setState(
+        () => status = _quotaAwareMessage(error, 'Cannot save translation.'),
+      );
     }
   }
 
@@ -1705,16 +1785,24 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
             controller: source,
             minLines: 3,
             maxLines: 6,
-            decoration: const InputDecoration(labelText: 'Source text (30+ chars)'),
+            decoration: const InputDecoration(
+              labelText: 'Source text (30+ chars)',
+            ),
           ),
-          FilledButton(onPressed: _submitText, child: const Text('Submit text import')),
+          FilledButton(
+            onPressed: _submitText,
+            child: const Text('Submit text import'),
+          ),
           const SizedBox(height: 16),
           sectionTitle(context, 'Object-backed'),
           TextField(
             controller: objectKey,
             decoration: const InputDecoration(labelText: 'Object key'),
           ),
-          FilledButton(onPressed: _submitObject, child: const Text('Submit object import')),
+          FilledButton(
+            onPressed: _submitObject,
+            child: const Text('Submit object import'),
+          ),
           const SizedBox(height: 16),
           sectionTitle(context, 'Quotas'),
           for (final q in quotas)
@@ -1725,10 +1813,7 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
           const SizedBox(height: 16),
           if (draft != null) ...[
             sectionTitle(context, 'Latest draft'),
-            Semantics(
-              label: 'Draft title',
-              child: Text(draft!.suggestedTitle),
-            ),
+            Semantics(label: 'Draft title', child: Text(draft!.suggestedTitle)),
             if (draft!.isAiLabeled)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
@@ -1741,7 +1826,10 @@ class _AssistedImportScreenState extends State<AssistedImportScreen> {
             Wrap(
               spacing: 8,
               children: [
-                OutlinedButton(onPressed: _approve, child: const Text('Approve')),
+                OutlinedButton(
+                  onPressed: _approve,
+                  child: const Text('Approve'),
+                ),
                 TextButton(onPressed: _reject, child: const Text('Reject')),
                 OutlinedButton(
                   onPressed: () => _translate('es'),
@@ -1805,7 +1893,8 @@ class _PluginCatalogScreenState extends State<PluginCatalogScreen> {
 
   Future<void> toggle(PluginInstallation installation) async {
     try {
-      if (installation.lifecycle == 'Disabled' || installation.lifecycle == 'Installed') {
+      if (installation.lifecycle == 'Disabled' ||
+          installation.lifecycle == 'Installed') {
         await widget.api.enablePlugin(installation.pluginId);
       } else {
         await widget.api.disablePlugin(installation.pluginId);
@@ -1836,8 +1925,10 @@ class _PluginCatalogScreenState extends State<PluginCatalogScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('My installations',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'My installations',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             FutureBuilder<List<PluginInstallation>>(
               future: installations,
               builder: (context, snapshot) {
@@ -1865,15 +1956,17 @@ class _PluginCatalogScreenState extends State<PluginCatalogScreen> {
                     for (final i in list)
                       ListTile(
                         title: Text(i.pluginDisplayName),
-                        subtitle: Text('${i.lifecycle} · ${i.scopes.join(',')}'),
+                        subtitle: Text(
+                          '${i.lifecycle} · ${i.scopes.join(',')}',
+                        ),
                         trailing: Wrap(
                           spacing: 4,
                           children: [
                             OutlinedButton(
                               onPressed: () => toggle(i),
-                              child: Text(i.lifecycle == 'Enabled'
-                                  ? 'Disable'
-                                  : 'Enable'),
+                              child: Text(
+                                i.lifecycle == 'Enabled' ? 'Disable' : 'Enable',
+                              ),
                             ),
                             TextButton(
                               onPressed: () => uninstall(i),
@@ -2085,14 +2178,17 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                     for (final order in data.items)
                       ListTile(
                         title: Text(order.guideTitle),
-                        subtitle: Text('${order.status} · ${order.currencyCode}'),
+                        subtitle: Text(
+                          '${order.status} · ${order.currencyCode}',
+                        ),
                         trailing: Text('${order.amountMinorUnits}'),
                       ),
                   ],
                 );
               },
             ),
-            if (status != null) Semantics(liveRegion: true, child: Text(status!)),
+            if (status != null)
+              Semantics(liveRegion: true, child: Text(status!)),
           ],
         ),
       ),
@@ -2148,7 +2244,9 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
 
   Future<void> _openReviewerDownload(String attachmentId) async {
     try {
-      final download = await widget.api.getReviewerEvidenceAttachmentDownload(attachmentId);
+      final download = await widget.api.getReviewerEvidenceAttachmentDownload(
+        attachmentId,
+      );
       if (!mounted) return;
       showDialog<void>(
         context: context,
@@ -2244,7 +2342,9 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
                     for (final u in entries)
                       ListTile(
                         title: Text(u.email),
-                        subtitle: Text('${u.status} · confirmed ${u.emailConfirmed}'),
+                        subtitle: Text(
+                          '${u.status} · confirmed ${u.emailConfirmed}',
+                        ),
                       ),
                   ],
                 );
@@ -2277,10 +2377,7 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
                 return Column(
                   children: [
                     for (final c in entries)
-                      ListTile(
-                        title: Text(c.slug),
-                        subtitle: Text(c.status),
-                      ),
+                      ListTile(title: Text(c.slug), subtitle: Text(c.status)),
                   ],
                 );
               },
@@ -2291,7 +2388,8 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
               controller: evidenceIdInput,
               decoration: const InputDecoration(
                 labelText: 'Evidence ID',
-                helperText: 'Paste a pending evidence ID to review attachments safely.',
+                helperText:
+                    'Paste a pending evidence ID to review attachments safely.',
               ),
             ),
             const SizedBox(height: 8),
@@ -2319,14 +2417,16 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
                 children: [
                   for (final attachment in reviewerAttachments)
                     ListTile(
-                      leading: Icon(attachment.isReady
-                          ? Icons.verified_outlined
-                          : attachment.isRejected
-                              ? Icons.error_outline
-                              : Icons.shield_outlined),
+                      leading: Icon(
+                        attachment.isReady
+                            ? Icons.verified_outlined
+                            : attachment.isRejected
+                            ? Icons.error_outline
+                            : Icons.shield_outlined,
+                      ),
                       title: Text(attachment.fileName),
                       subtitle: Text(
-                        '${attachment.contentType} · ${attachment.sizeBytes} bytes · ${_attachmentStateLabel(attachment)}'
+                        '${attachment.contentType} · ${attachment.sizeBytes} bytes · ${_attachmentStateLabel(attachment.state)}'
                         '${attachment.scanFailureCode != null ? ' · ${attachment.scanFailureCode}' : ''}',
                       ),
                       trailing: TextButton(
@@ -2345,12 +2445,12 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
   }
 }
 
-String _attachmentStateLabel(EvidenceAttachmentSummary attachment) {
-  if (attachment.isReady) return 'Ready';
-  if (attachment.isRejected) return 'Rejected (scan failed)';
-  if (attachment.isScanning) return 'Scanning for malware…';
-  if (attachment.isStaged) return 'Awaiting upload';
-  return attachment.state;
+String _attachmentStateLabel(String state) {
+  if (state == 'Ready') return 'Ready';
+  if (state == 'Rejected') return 'Rejected (scan failed)';
+  if (state == 'Scanning') return 'Scanning for malware…';
+  if (state == 'Staged') return 'Awaiting upload';
+  return state;
 }
 
 class _ReviewSection extends StatefulWidget {
@@ -2376,13 +2476,10 @@ class _ReviewSectionState extends State<_ReviewSection> {
     super.initState();
     reviews = widget.api.listReviews(widget.guideId);
   }
+
   Future<void> submit() async {
     try {
-      await widget.api.submitReview(
-        widget.guideId,
-        rating,
-        body.text.trim(),
-      );
+      await widget.api.submitReview(widget.guideId, rating, body.text.trim());
       body.clear();
       setState(() {
         reviews = widget.api.listReviews(widget.guideId);
@@ -2430,10 +2527,7 @@ class _ReviewSectionState extends State<_ReviewSection> {
           ],
         ),
       ),
-      FilledButton(
-        onPressed: submit,
-        child: const Text('Submit review'),
-      ),
+      FilledButton(onPressed: submit, child: const Text('Submit review')),
       if (status != null) Semantics(liveRegion: true, child: Text(status!)),
       FutureBuilder<List<Review>>(
         future: reviews,
@@ -2597,7 +2691,7 @@ class _EvidenceAttachmentDraft {
     required this.sizeBytes,
     required this.sha256,
     required this.bytes,
-  })  : attachmentId = null,
+  }) : attachmentId = null,
        state = EvidenceAttachmentDraftState.uploading,
        error = null,
        progress = 0;
@@ -2645,12 +2739,21 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
 
   Future<void> submitEvidence() async {
     if (isSubmitting) return;
-    if (drafts.any((d) => d.state == EvidenceAttachmentDraftState.uploading || d.state == EvidenceAttachmentDraftState.scanning)) {
-      setState(() => status = 'Wait for the attachments to finish scanning before submitting.');
+    if (drafts.any(
+      (d) =>
+          d.state == EvidenceAttachmentDraftState.uploading ||
+          d.state == EvidenceAttachmentDraftState.scanning,
+    )) {
+      setState(
+        () => status =
+            'Wait for the attachments to finish scanning before submitting.',
+      );
       return;
     }
     if (body.text.trim().length < 50) {
-      setState(() => status = 'Evidence text must contain at least 50 characters.');
+      setState(
+        () => status = 'Evidence text must contain at least 50 characters.',
+      );
       return;
     }
     setState(() {
@@ -2659,7 +2762,11 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
     });
     try {
       final readyIds = drafts
-          .where((d) => d.state == EvidenceAttachmentDraftState.ready && d.attachmentId != null)
+          .where(
+            (d) =>
+                d.state == EvidenceAttachmentDraftState.ready &&
+                d.attachmentId != null,
+          )
           .map((d) => d.attachmentId!)
           .toList();
       final prefix = evidenceDate == null
@@ -2680,9 +2787,16 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
       widget.onSubmit('Evidence submitted for review.');
       _refresh();
     } on ApiException catch (err) {
-      setState(() => status = err.message.isNotEmpty ? err.message : 'Cannot submit evidence.');
+      setState(
+        () => status = err.message.isNotEmpty
+            ? err.message
+            : 'Cannot submit evidence.',
+      );
     } catch (_) {
-      setState(() => status = 'Cannot submit evidence. Check your connection and retry.');
+      setState(
+        () =>
+            status = 'Cannot submit evidence. Check your connection and retry.',
+      );
     } finally {
       if (mounted) setState(() => isSubmitting = false);
     }
@@ -2701,8 +2815,14 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   }
 
   Future<void> _pickEvidenceAttachment() async {
-    if (drafts.where((d) => d.state != EvidenceAttachmentDraftState.failed).length >= 5) {
-      setState(() => status = 'You can attach up to five files per evidence submission.');
+    if (drafts
+            .where((d) => d.state != EvidenceAttachmentDraftState.failed)
+            .length >=
+        5) {
+      setState(
+        () =>
+            status = 'You can attach up to five files per evidence submission.',
+      );
       return;
     }
     try {
@@ -2715,7 +2835,9 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
       final file = result.files.first;
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
-        setState(() => status = 'Could not read the selected file. Try another file.');
+        setState(
+          () => status = 'Could not read the selected file. Try another file.',
+        );
         return;
       }
       final sha256 = await _sha256Hex(bytes);
@@ -2736,7 +2858,10 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
     } on ApiException catch (err) {
       setState(() => status = err.message);
     } catch (error) {
-      setState(() => status = 'Could not pick a file right now. Try again when you are online.');
+      setState(
+        () => status =
+            'Could not pick a file right now. Try again when you are online.',
+      );
     }
   }
 
@@ -2891,79 +3016,79 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
   }
 
   Widget _badgeView() => FutureBuilder<VerifiedBadge>(
-        future: badge,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Verification badge unavailable.'),
-            );
-          }
-          final value = snapshot.data!;
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Semantics(
-              label: value.verified ? 'Verified by travelers' : 'Not yet verified',
-              child: Text(
-                value.verified
-                    ? 'Verified by ${value.approvedEvidenceCount} traveler(s).'
-                    : 'No verified travelers yet.',
-              ),
-            ),
-          );
-        },
+    future: badge,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Verification badge unavailable.'),
+        );
+      }
+      final value = snapshot.data!;
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Semantics(
+          label: value.verified ? 'Verified by travelers' : 'Not yet verified',
+          child: Text(
+            value.verified
+                ? 'Verified by ${value.approvedEvidenceCount} traveler(s).'
+                : 'No verified travelers yet.',
+          ),
+        ),
       );
+    },
+  );
 
   Widget _insightsView() => FutureBuilder<TripInsightSummary>(
-        future: insights,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Actual insights unavailable.'),
-            );
-          }
-          final value = snapshot.data!;
-          if (!value.meetsKAnonymity) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Actual insights appear once at least five travelers opt in.',
-              ),
-            );
-          }
-          final summary = value.average ?? value.median;
-          if (summary == null) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Actual insights are not yet available.'),
-            );
-          }
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Semantics(
-              label: 'Average trip insights',
-              child: Text(
-                'Avg party ${summary.partySize.toStringAsFixed(1)} · '
-                '${summary.tripDays.toStringAsFixed(1)} days · '
-                '${summary.totalCostMinorUnits.toStringAsFixed(0)} ${summary.currencyCode}',
-              ),
-            ),
-          );
-        },
+    future: insights,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Actual insights unavailable.'),
+        );
+      }
+      final value = snapshot.data!;
+      if (!value.meetsKAnonymity) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Actual insights appear once at least five travelers opt in.',
+          ),
+        );
+      }
+      final summary = value.average ?? value.median;
+      if (summary == null) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Actual insights are not yet available.'),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Semantics(
+          label: 'Average trip insights',
+          child: Text(
+            'Avg party ${summary.partySize.toStringAsFixed(1)} · '
+            '${summary.tripDays.toStringAsFixed(1)} days · '
+            '${summary.totalCostMinorUnits.toStringAsFixed(0)} ${summary.currencyCode}',
+          ),
+        ),
       );
+    },
+  );
 
   Widget _attachmentsList() {
     return Column(
@@ -2989,18 +3114,24 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (draft.state == EvidenceAttachmentDraftState.uploading ||
-                            draft.state == EvidenceAttachmentDraftState.scanning)
+                        if (draft.state ==
+                                EvidenceAttachmentDraftState.uploading ||
+                            draft.state ==
+                                EvidenceAttachmentDraftState.scanning)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: LinearProgressIndicator(value: draft.progress),
+                            child: LinearProgressIndicator(
+                              value: draft.progress,
+                            ),
                           ),
                         if (draft.error != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               draft.error!,
-                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                             ),
                           ),
                         Padding(
@@ -3037,14 +3168,19 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
       EvidenceAttachmentDraftState.uploading => 'Uploading ${draft.fileName}',
       EvidenceAttachmentDraftState.scanning => 'Scanning ${draft.fileName}',
       EvidenceAttachmentDraftState.ready => '${draft.fileName} is ready',
-      EvidenceAttachmentDraftState.failed => '${draft.fileName} failed: ${draft.error ?? "unknown error"}',
+      EvidenceAttachmentDraftState.failed =>
+        '${draft.fileName} failed: ${draft.error ?? "unknown error"}',
     };
   }
 
   Widget _attachmentIcon(_EvidenceAttachmentDraft draft) {
     return switch (draft.state) {
-      EvidenceAttachmentDraftState.uploading => const Icon(Icons.cloud_upload_outlined),
-      EvidenceAttachmentDraftState.scanning => const Icon(Icons.shield_outlined),
+      EvidenceAttachmentDraftState.uploading => const Icon(
+        Icons.cloud_upload_outlined,
+      ),
+      EvidenceAttachmentDraftState.scanning => const Icon(
+        Icons.shield_outlined,
+      ),
       EvidenceAttachmentDraftState.ready => const Icon(Icons.verified_outlined),
       EvidenceAttachmentDraftState.failed => const Icon(Icons.error_outline),
     };
@@ -3071,9 +3207,15 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
             initialValue: kind,
             decoration: const InputDecoration(labelText: 'Evidence kind'),
             items: const [
-              DropdownMenuItem(value: 'TripJournal', child: Text('Trip journal')),
+              DropdownMenuItem(
+                value: 'TripJournal',
+                child: Text('Trip journal'),
+              ),
               DropdownMenuItem(value: 'Receipt', child: Text('Receipt')),
-              DropdownMenuItem(value: 'BookingConfirmation', child: Text('Booking')),
+              DropdownMenuItem(
+                value: 'BookingConfirmation',
+                child: Text('Booking'),
+              ),
               DropdownMenuItem(value: 'PhotoNote', child: Text('Photo note')),
               DropdownMenuItem(value: 'Other', child: Text('Other')),
             ],
@@ -3153,7 +3295,9 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
                 child: TextField(
                   controller: cost,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Total minor units'),
+                  decoration: const InputDecoration(
+                    labelText: 'Total minor units',
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -3174,8 +3318,7 @@ class _VerifiedTripsSectionState extends State<_VerifiedTripsSection> {
             padding: EdgeInsets.all(16),
             child: Text('Unlock to submit verification evidence.'),
           ),
-        if (status != null)
-          Semantics(liveRegion: true, child: Text(status!)),
+        if (status != null) Semantics(liveRegion: true, child: Text(status!)),
       ],
     );
   }
@@ -3200,7 +3343,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       padding: const EdgeInsets.all(24),
       children: [
         sectionTitle(context, 'Trips'),
-        _TripListSection(future: trips),
+        _TripListSection(future: trips, api: widget.api),
         const SizedBox(height: 16),
         sectionTitle(context, 'Favorites'),
         _FavoriteSection(future: favorites),
@@ -3212,12 +3355,84 @@ class _LibraryScreenState extends State<LibraryScreen> {
   );
 }
 
-class _TripListSection extends StatelessWidget {
-  const _TripListSection({required this.future});
+class _TripListSection extends StatefulWidget {
+  const _TripListSection({required this.future, required this.api});
   final Future<List<Trip>> future;
+  final AppApi api;
+  @override
+  State<_TripListSection> createState() => _TripListSectionState();
+}
+
+class _TripListSectionState extends State<_TripListSection> {
+  late Future<List<Trip>> _trips = widget.future;
+  String? _statusMessage;
+  String? _errorMessage;
+  bool _hasConflict = false;
+
+  void _setStatus(String? message, {bool conflict = false}) {
+    if (!mounted) return;
+    setState(() {
+      _statusMessage = message;
+      _errorMessage = null;
+      _hasConflict = conflict;
+    });
+  }
+
+  void _setError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = message;
+      _statusMessage = null;
+      _hasConflict = false;
+    });
+  }
+
+  Future<void> _editTrip(Trip trip) async {
+    final updated = await showDialog<_TripEditResult>(
+      context: context,
+      builder: (_) => _TripEditDialog(trip: trip),
+    );
+    if (updated == null || !mounted) return;
+    _setStatus(null);
+    try {
+      final result = await widget.api.updateTrip(
+        trip.id,
+        title: trip.title,
+        notes: updated.notes,
+        status: updated.status,
+      );
+      _setStatus('Saved "${result.title}".');
+      _trips = widget.api.listTrips();
+      if (mounted) setState(() {});
+    } on ApiException catch (e) {
+      final mapped = toAppError(e);
+      if (mapped == AppError.conflict) {
+        _setStatus(
+          'This trip changed since you loaded it. Reload to see the latest version.',
+          conflict: true,
+        );
+      } else {
+        _setError(appErrorMessage(mapped));
+      }
+    } catch (e) {
+      _setError(appErrorMessage(toAppError(e)));
+    }
+  }
+
+  Future<void> _reload() async {
+    _setStatus(null);
+    try {
+      _trips = widget.api.listTrips();
+      await _trips;
+      if (mounted) setState(() {});
+    } catch (e) {
+      _setError(appErrorMessage(toAppError(e)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Trip>>(
-    future: future,
+    future: _trips,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
         return const Center(child: CircularProgressIndicator());
@@ -3226,19 +3441,170 @@ class _TripListSection extends StatelessWidget {
         return const Text('Trips are unavailable.');
       }
       final items = snapshot.data!;
-      if (items.isEmpty) {
-        return const Text('No trips saved yet.');
-      }
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final trip in items)
-            ListTile(
-              title: Text(trip.title),
-              subtitle: Text('${trip.status} · ${trip.notes}'),
+          if (_statusMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _TripStatusBanner(
+                message: _statusMessage!,
+                conflict: _hasConflict,
+                onReload: _hasConflict ? _reload : null,
+              ),
+            )
+          else if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _TripErrorBanner(message: _errorMessage!),
             ),
+          if (items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('No trips saved yet.'),
+            )
+          else
+            for (final trip in items)
+              ListTile(
+                title: Text(trip.title),
+                subtitle: Text('${trip.status} · ${trip.notes}'),
+                trailing: const Icon(Icons.edit_outlined),
+                onTap: () => _editTrip(trip),
+              ),
         ],
       );
     },
+  );
+}
+
+class _TripStatusBanner extends StatelessWidget {
+  const _TripStatusBanner({
+    required this.message,
+    required this.conflict,
+    this.onReload,
+  });
+  final String message;
+  final bool conflict;
+  final VoidCallback? onReload;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final bg = conflict ? scheme.errorContainer : scheme.secondaryContainer;
+    final fg = conflict ? scheme.onErrorContainer : scheme.onSecondaryContainer;
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              conflict ? Icons.refresh : Icons.check_circle_outline,
+              color: fg,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(message, style: TextStyle(color: fg)),
+            ),
+            if (onReload != null)
+              TextButton(onPressed: onReload, child: const Text('Reload')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TripErrorBanner extends StatelessWidget {
+  const _TripErrorBanner({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
+      ),
+    );
+  }
+}
+
+class _TripEditResult {
+  const _TripEditResult(this.notes, this.status);
+  final String notes;
+  final String status;
+}
+
+class _TripEditDialog extends StatefulWidget {
+  const _TripEditDialog({required this.trip});
+  final Trip trip;
+  @override
+  State<_TripEditDialog> createState() => _TripEditDialogState();
+}
+
+class _TripEditDialogState extends State<_TripEditDialog> {
+  late final TextEditingController _notes = TextEditingController(
+    text: widget.trip.notes,
+  );
+  late String _status = widget.trip.status;
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Edit trip'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.trip.title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _notes,
+          decoration: const InputDecoration(labelText: 'Notes'),
+          maxLines: 3,
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: _status,
+          decoration: const InputDecoration(labelText: 'Status'),
+          items: const [
+            DropdownMenuItem(value: 'Planning', child: Text('Planning')),
+            DropdownMenuItem(value: 'InProgress', child: Text('In progress')),
+            DropdownMenuItem(value: 'Completed', child: Text('Completed')),
+            DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => _status = v);
+          },
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () =>
+            Navigator.of(context).pop(_TripEditResult(_notes.text, _status)),
+        child: const Text('Save'),
+      ),
+    ],
   );
 }
 
@@ -3313,8 +3679,7 @@ class _EntitlementList extends StatelessWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) =>
-                      PublicGuideScreen(api: api, slug: item.slug),
+                  builder: (_) => PublicGuideScreen(api: api, slug: item.slug),
                 ),
               ),
             ),
@@ -3385,8 +3750,10 @@ class _AuthorScreenState extends State<AuthorScreen> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              Text(author.displayName,
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                author.displayName,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               Text(author.biography),
               Text(author.travelCountries.join(', ')),
               const SizedBox(height: 16),
@@ -3398,9 +3765,9 @@ class _AuthorScreenState extends State<AuthorScreen> {
                     children: [
                       OutlinedButton(
                         onPressed: busy ? null : toggleFollow,
-                        child: Text(status?.following == true
-                            ? 'Unfollow'
-                            : 'Follow'),
+                        child: Text(
+                          status?.following == true ? 'Unfollow' : 'Follow',
+                        ),
                       ),
                       const SizedBox(width: 16),
                       FutureBuilder<int>(
@@ -3418,8 +3785,7 @@ class _AuthorScreenState extends State<AuthorScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              if (author.guides.isEmpty)
-                const Text('No published guides yet.'),
+              if (author.guides.isEmpty) const Text('No published guides yet.'),
               for (final guide in author.guides)
                 ListTile(
                   title: Text(guide.title),
@@ -3564,10 +3930,11 @@ class _NotificationPreferencesScreenState
     if (prefs == null) return;
     try {
       final updated = await widget.api.updateNotificationPreferences(prefs!);
-      if (mounted) setState(() {
-        prefs = updated;
-        status = 'Preferences saved.';
-      });
+      if (mounted)
+        setState(() {
+          prefs = updated;
+          status = 'Preferences saved.';
+        });
     } catch (_) {
       if (mounted) setState(() => status = 'Cannot save preferences.');
     }
@@ -3589,6 +3956,7 @@ class _NotificationPreferencesScreenState
         onChanged: onChanged,
       );
     }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notification preferences'),
@@ -3602,33 +3970,67 @@ class _NotificationPreferencesScreenState
       ),
       body: ListView(
         children: [
-          toggle('Email enabled', p.emailEnabled,
-              (v) => setState(() => prefs!.emailEnabled = v)),
-          toggle('In-app enabled', p.inAppEnabled,
-              (v) => setState(() => prefs!.inAppEnabled = v)),
-          const Divider(),
-          toggle('New guide email', p.newGuidePublishedEmail,
-              (v) => setState(() => prefs!.newGuidePublishedEmail = v)),
-          toggle('New guide in-app', p.newGuidePublishedInApp,
-              (v) => setState(() => prefs!.newGuidePublishedInApp = v)),
-          toggle('New review on my guide email', p.newReviewOnMyGuideEmail,
-              (v) => setState(() => prefs!.newReviewOnMyGuideEmail = v)),
           toggle(
-              'New review on my guide in-app',
-              p.newReviewOnMyGuideInApp,
-              (v) => setState(() => prefs!.newReviewOnMyGuideInApp = v)),
-          toggle('New reply email', p.newReplyToReviewEmail,
-              (v) => setState(() => prefs!.newReplyToReviewEmail = v)),
-          toggle('New reply in-app', p.newReplyToReviewInApp,
-              (v) => setState(() => prefs!.newReplyToReviewInApp = v)),
-          toggle('Follower gained email', p.followerGainedEmail,
-              (v) => setState(() => prefs!.followerGainedEmail = v)),
-          toggle('Follower gained in-app', p.followerGainedInApp,
-              (v) => setState(() => prefs!.followerGainedInApp = v)),
-          toggle('Evidence reviewed email', p.evidenceReviewedEmail,
-              (v) => setState(() => prefs!.evidenceReviewedEmail = v)),
-          toggle('Evidence reviewed in-app', p.evidenceReviewedInApp,
-              (v) => setState(() => prefs!.evidenceReviewedInApp = v)),
+            'Email enabled',
+            p.emailEnabled,
+            (v) => setState(() => prefs!.emailEnabled = v),
+          ),
+          toggle(
+            'In-app enabled',
+            p.inAppEnabled,
+            (v) => setState(() => prefs!.inAppEnabled = v),
+          ),
+          const Divider(),
+          toggle(
+            'New guide email',
+            p.newGuidePublishedEmail,
+            (v) => setState(() => prefs!.newGuidePublishedEmail = v),
+          ),
+          toggle(
+            'New guide in-app',
+            p.newGuidePublishedInApp,
+            (v) => setState(() => prefs!.newGuidePublishedInApp = v),
+          ),
+          toggle(
+            'New review on my guide email',
+            p.newReviewOnMyGuideEmail,
+            (v) => setState(() => prefs!.newReviewOnMyGuideEmail = v),
+          ),
+          toggle(
+            'New review on my guide in-app',
+            p.newReviewOnMyGuideInApp,
+            (v) => setState(() => prefs!.newReviewOnMyGuideInApp = v),
+          ),
+          toggle(
+            'New reply email',
+            p.newReplyToReviewEmail,
+            (v) => setState(() => prefs!.newReplyToReviewEmail = v),
+          ),
+          toggle(
+            'New reply in-app',
+            p.newReplyToReviewInApp,
+            (v) => setState(() => prefs!.newReplyToReviewInApp = v),
+          ),
+          toggle(
+            'Follower gained email',
+            p.followerGainedEmail,
+            (v) => setState(() => prefs!.followerGainedEmail = v),
+          ),
+          toggle(
+            'Follower gained in-app',
+            p.followerGainedInApp,
+            (v) => setState(() => prefs!.followerGainedInApp = v),
+          ),
+          toggle(
+            'Evidence reviewed email',
+            p.evidenceReviewedEmail,
+            (v) => setState(() => prefs!.evidenceReviewedEmail = v),
+          ),
+          toggle(
+            'Evidence reviewed in-app',
+            p.evidenceReviewedInApp,
+            (v) => setState(() => prefs!.evidenceReviewedInApp = v),
+          ),
           if (status != null)
             Padding(
               padding: const EdgeInsets.all(16),
@@ -3753,7 +4155,9 @@ class _SignInScreenState extends State<SignInScreen> {
       Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = 'Sign in failed. ${appErrorMessage(toAppError(e))}');
+      setState(
+        () => error = 'Sign in failed. ${appErrorMessage(toAppError(e))}',
+      );
     } finally {
       if (mounted) setState(() => busy = false);
     }
