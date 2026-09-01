@@ -1,782 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/main.dart';
 import 'package:trippify_flutter/design/states.dart';
 import 'package:trippify_flutter/design/theme.dart';
 import 'package:trippify_flutter/design/tokens.dart';
+import 'helpers/fake_api.dart';
 
-class FakeApi implements AppApi {
-  FakeApi(
-    this.result, {
-    this.error,
-    this.routeError,
-    this.guides = const [],
-    this.searchResult,
-    this.unlocked = false,
-    this.entitlements = const [],
-    this.favorites = const [],
-    this.trips = const [],
-    this.summary,
-    this.initialToken,
-    this.startLoggedIn = true,
-    this.loginShouldFail = false,
-    this.logoutError,
-    this.summaryError,
-    this.updateTripConflict = false,
-  }) {
-    if (startLoggedIn) {
-      _tokens.writeSync(initialToken ?? 'fake-token');
-    }
-  }
-  final Future<SystemDistributionInfo> result;
-  final Object? error;
-  final Object? routeError;
-  final List<GuideSummary> guides;
-  final SearchResult? searchResult;
-  final bool unlocked;
-  final List<Entitlement> entitlements;
-  final List<Favorite> favorites;
-  final List<Trip> trips;
-  MySummary? summary;
-  String? initialToken;
-  final bool startLoggedIn;
-  bool loginShouldFail;
-  final Object? logoutError;
-  final Object? summaryError;
-  final bool updateTripConflict;
-  int updateTripCalls = 0;
-  int logoutCalls = 0;
-  final MemoryTokenStore _tokens = MemoryTokenStore();
-
-  @override
-  ValueListenable<String?> get tokens => _tokens.listenable;
-  @override
-  bool get isLoggedIn => (tokens.value ?? '').isNotEmpty;
-
-  Future<void> signInAs(MySummary s, {String token = 'fake-token'}) async {
-    summary = s;
-    await _tokens.write(token);
-  }
-
-  Future<void> signOut() async => _tokens.write(null);
-
-  @override
-  Future<void> register(String email, String password) async {}
-  @override
-  Future<void> login(String email, String password) async {
-    if (loginShouldFail) {
-      throw const ApiException(
-        401,
-        'Email or password is incorrect, or the account has not been confirmed.',
-      );
-    }
-    if (error != null) throw error!;
-    await _tokens.write(initialToken ?? 'fake-token');
-  }
-
-  @override
-  Future<PrivateProfile> getProfile() async =>
-      const PrivateProfile('user@example.com', 'Traveler', true, 'Active');
-  @override
-  Future<void> updateProfile(
-    String displayName,
-    String? avatarUrl,
-    String? locale,
-  ) async {}
-  @override
-  Future<void> enrollCreator(
-    String slug,
-    String biography,
-    List<String> countries,
-  ) async {}
-  @override
-  Future<PublicCreator> getCreator(String slug) async =>
-      PublicCreator(slug, 'Traveler', 'Trips', const ['JP']);
-  @override
-  Future<List<GuideSummary>> getMyGuides() async {
-    if (error != null) throw error!;
-    return guides;
-  }
-
-  @override
-  Future<DayRoute> getDayRoute(String guideId, int dayPosition) async {
-    if (routeError != null) throw routeError!;
-    return DayRoute(
-      'token',
-      const [
-        RouteMarker('n1', 0, 'Osaka Castle', 34.687, 135.526, 'Manual', null),
-        RouteMarker(
-          'n2',
-          1,
-          'Nishiki Market',
-          35.005,
-          135.765,
-          'Resolved',
-          'Local geocoder',
-        ),
-      ],
-      const [
-        RouteSegment(
-          0,
-          'Train',
-          'JR line',
-          'Osaka Castle',
-          'Nishiki Market',
-          55,
-          820,
-          'JPY',
-        ),
-      ],
-      'Local geocoder',
-    );
-  }
-
-  @override
-  Future<DayRoute> saveDayRoute(
-    String guideId,
-    int dayPosition,
-    DayRoute route,
-  ) async => route;
-  @override
-  Future<BudgetOverview> getBudget(String guideId, int partySize) async {
-    if (routeError != null) throw routeError!;
-    return BudgetOverview(partySize, [
-      BudgetLine('Transport', 5000, 5000 * partySize, 'JPY'),
-      const BudgetLine('Food', 3000, 3000, 'JPY'),
-    ]);
-  }
-
-  @override
-  Future<BudgetOverview> saveBudget(
-    String guideId,
-    String concurrencyToken,
-    List<BudgetLine> lines,
-  ) async => BudgetOverview(1, lines);
-
-  @override
-  Future<GuideDraft> createGuide(String title, String countryCode) async =>
-      GuideDraft('1', title, countryCode, 'token', const ['Osaka', 'Kyoto']);
-  @override
-  Future<GuideDraft> saveGuideStructure(GuideDraft guide) async => guide;
-
-  @override
-  Future<PublishResult> publishGuide(
-    String guideId,
-    String concurrencyToken, {
-    int? priceMinorUnits,
-    String? currencyCode,
-  }) async => PublishResult('token2', 'kyoto-temples-walk', 'FreePublic');
-  @override
-  Future<void> unpublishGuide(String guideId, String concurrencyToken) async {}
-  @override
-  Future<SearchResult> searchGuides({
-    String? country,
-    String? tag,
-    String? pricing,
-    String? query,
-  }) async {
-    if (routeError != null) throw routeError!;
-    return searchResult ?? const SearchResult(0, [], []);
-  }
-
-  @override
-  Future<PublicGuide> getPublicGuide(String slug) async {
-    if (routeError != null) throw routeError!;
-    return PublicGuide(
-      'guide-1',
-      slug,
-      'Tokyo luxury nights',
-      'Three refined evenings',
-      'A curated night itinerary.',
-      'JP',
-      3,
-      const ['Tokyo'],
-      const ['food'],
-      'paid',
-      'author-1',
-      '/guides/$slug',
-      2500,
-      'JPY',
-      unlocked,
-      [
-        PublicGuideDay('Evening one', [
-          PublicGuideNode('Tower', false),
-          PublicGuideNode('Izakaya', false),
-        ]),
-      ],
-    );
-  }
-
-  @override
-  Future<CheckoutSession> checkout(
-    String guideId, {
-    String? discountCode,
-    String? idempotencyKey,
-  }) async {
-    if (routeError != null) throw routeError!;
-    return CheckoutSession(
-      'order-1',
-      'cs_test_1',
-      'https://example.test/cs_test_1',
-      1875,
-      'JPY',
-      'test',
-    );
-  }
-
-  @override
-  Future<List<Entitlement>> getEntitlements() async {
-    if (routeError != null) throw routeError!;
-    return entitlements;
-  }
-
-  @override
-  Future<void> addFavorite(String guideId) async {}
-  @override
-  Future<void> removeFavorite(String guideId) async {}
-  @override
-  Future<List<Favorite>> listFavorites() async => favorites;
-  @override
-  Future<List<Trip>> listTrips({CancelToken? cancelToken}) async => trips;
-  @override
-  Future<Trip> createTrip(String guideId, {String? title}) async =>
-      Trip('trip-1', title ?? 'Trip', guideId, null, 'Planning', '');
-  @override
-  Future<Trip> updateTrip(
-    String tripId, {
-    String? notes,
-    String? status,
-    String? title,
-    CancelToken? cancelToken,
-  }) async {
-    updateTripCalls++;
-    if (updateTripConflict) {
-      throw const ApiException(409, 'The trip changed since you loaded it.');
-    }
-    return Trip(
-      tripId,
-      title ?? 'Trip',
-      null,
-      null,
-      status ?? 'Planning',
-      notes ?? '',
-    );
-  }
-
-  @override
-  Future<ForkResult> forkGuide(String guideId) async => ForkResult(
-    'fork-1',
-    'fork-slug',
-    'Tokyo luxury nights',
-    guideId,
-    'Tokyo luxury nights',
-  );
-
-  @override
-  Future<List<Review>> listReviews(String guideId) async => const [];
-  @override
-  Future<Review> submitReview(String guideId, int rating, String body) async =>
-      Review(
-        'r1',
-        guideId,
-        'user-1',
-        rating,
-        body,
-        'Visible',
-        DateTime(2026, 1, 1),
-        null,
-      );
-  @override
-  Future<Review> editReview(String reviewId, int rating, String body) async =>
-      Review(
-        reviewId,
-        'g1',
-        'user-1',
-        rating,
-        body,
-        'Visible',
-        DateTime(2026, 1, 1),
-        null,
-      );
-  @override
-  Future<void> deleteReview(String reviewId) async {}
-  @override
-  Future<Reply> replyToReview(String reviewId, String body) async =>
-      Reply('rp1', reviewId, 'author-1', body, DateTime(2026, 1, 2));
-  @override
-  Future<void> reportReview(String reviewId, String reason) async {}
-  @override
-  Future<void> submitFeedback(String guideId, String body) async {}
-  @override
-  Future<VerifiedBadge> getVerifiedBadge(String guideId) async =>
-      VerifiedBadge(guideId, false, 0, null, null);
-  @override
-  Future<void> submitEvidence(
-    String guideId, {
-    required String kind,
-    required String body,
-    String? redactedReference,
-    List<String> attachmentIds = const [],
-  }) async {}
-  @override
-  Future<EvidenceAttachmentStageResult> stageEvidenceAttachment({
-    required String fileName,
-    required String contentType,
-    required int sizeBytes,
-    required String sha256,
-  }) async => EvidenceAttachmentStageResult(
-    attachmentId: 'att-1',
-    storageKey: 'evidence/key',
-    expiresAt: DateTime.now().add(const Duration(hours: 1)),
-  );
-  @override
-  Future<EvidenceAttachmentSummary> uploadEvidenceAttachmentContent({
-    required String attachmentId,
-    required List<int> bytes,
-  }) async => EvidenceAttachmentSummary(
-    id: attachmentId,
-    fileName: 'fake.bin',
-    contentType: 'application/octet-stream',
-    sizeBytes: bytes.length,
-    state: 'Scanning',
-    createdAt: DateTime.now(),
-  );
-  @override
-  Future<List<EvidenceAttachmentSummary>>
-  listEvidenceStagedAttachments() async => const [];
-  @override
-  Future<List<EvidenceAttachmentSummary>> listEvidenceAttachments(
-    String evidenceId,
-  ) async => const [];
-  @override
-  Future<void> removeEvidenceAttachment(String attachmentId) async {}
-  @override
-  Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(
-    String attachmentId,
-  ) async => EvidenceAttachmentDownload(
-    id: attachmentId,
-    url: Uri.parse('https://example.com/download'),
-    contentType: 'application/octet-stream',
-    fileName: 'fake.bin',
-    expiresAt: DateTime.now().add(const Duration(minutes: 5)),
-  );
-  @override
-  Future<List<EvidenceAttachmentReviewerView>> listReviewerEvidenceAttachments(
-    String evidenceId,
-  ) async => const [];
-  @override
-  Future<EvidenceAttachmentDownload> getReviewerEvidenceAttachmentDownload(
-    String attachmentId,
-  ) async => EvidenceAttachmentDownload(
-    id: attachmentId,
-    url: Uri.parse('https://example.com/download'),
-    contentType: 'application/octet-stream',
-    fileName: 'fake.bin',
-    expiresAt: DateTime.now().add(const Duration(minutes: 5)),
-  );
-  @override
-  Future<TripInsightSummary> getTripInsights(String guideId) async =>
-      const TripInsightSummary('g1', 0, false, null, null);
-  @override
-  Future<void> submitTripInsight(
-    String guideId, {
-    required int partySize,
-    required int tripDays,
-    required int totalCostMinorUnits,
-    required String currencyCode,
-  }) async {}
-  @override
-  Future<CreatorDashboardOverview> getCreatorDashboardOverview() async =>
-      _emptyOverview();
-
-  static CreatorDashboardOverview _emptyOverview() =>
-      CreatorDashboardOverview(0, 0, 0, 0, const [], DateTime(2026, 1, 1));
-  @override
-  Future<CreatorOrdersResponse> listCreatorOrders({int? limit}) async =>
-      const CreatorOrdersResponse(0, []);
-  @override
-  Future<CreatorReviewSummary> getCreatorDashboardReviews() async =>
-      const CreatorReviewSummary(0, 0, 0, 0);
-  @override
-  Future<AdminAuditResponse> listAdminAudit({int? limit}) async =>
-      const AdminAuditResponse(0, []);
-  @override
-  Future<AdminUsersResponse> listAdminUsers({int? limit}) async =>
-      const AdminUsersResponse(0, []);
-  @override
-  Future<AdminCreatorsResponse> listAdminCreators({int? limit}) async =>
-      const AdminCreatorsResponse(0, []);
-  @override
-  Future<FollowStatus> getCreatorFollowStatus(String slug) async =>
-      FollowStatus(slug, false, null);
-  @override
-  Future<FollowStatus> followCreator(String slug) async =>
-      FollowStatus(slug, true, DateTime(2026, 1, 1));
-  @override
-  Future<void> unfollowCreator(String slug) async {}
-  @override
-  Future<int> getCreatorFollowersCount(String slug) async => 0;
-  @override
-  Future<NotificationList> listNotifications({int? limit}) async =>
-      const NotificationList(0, []);
-  @override
-  Future<void> markNotificationRead(String id) async {}
-  @override
-  Future<NotificationPreferences> getNotificationPreferences() async =>
-      _defaultPrefs();
-  @override
-  Future<NotificationPreferences> updateNotificationPreferences(
-    NotificationPreferences preferences,
-  ) async => preferences;
-  @override
-  Future<GuideReleaseList> listGuideReleases(
-    String guideId, {
-    int? limit,
-  }) async => const GuideReleaseList(0, []);
-  @override
-  Future<GuideRelease> getGuideRelease(String releaseId) async => GuideRelease(
-    releaseId,
-    'g1',
-    1,
-    'Initial release.',
-    'Guide',
-    DateTime(2026, 1, 1),
-    '',
-  );
-  @override
-  Future<GuideFreshness> getGuideFreshness(String guideId) async =>
-      GuideFreshness(guideId, 0, null, null);
-  @override
-  Future<GuideRelease> publishGuideRelease(
-    String guideId,
-    String changelog,
-  ) async => GuideRelease(
-    'new-release',
-    guideId,
-    1,
-    changelog,
-    'Guide',
-    DateTime(2026, 1, 1),
-    '',
-  );
-  @override
-  Future<PluginList> listPlugins({int? limit}) async => const PluginList(0, []);
-  @override
-  Future<PluginSummary> getPlugin(String pluginId) async => PluginSummary(
-    pluginId,
-    'demo',
-    'Demo',
-    '1.0.0',
-    'Trippify',
-    'Approved',
-    DateTime(2026, 1, 1),
-  );
-  @override
-  Future<List<PluginInstallation>> listMyPluginInstallations() async =>
-      const [];
-  @override
-  Future<void> installPlugin(String pluginId, List<String> scopes) async {}
-  @override
-  Future<void> enablePlugin(String pluginId) async {}
-  @override
-  Future<void> disablePlugin(String pluginId) async {}
-  @override
-  Future<void> uninstallPlugin(String pluginId) async {}
-  @override
-  Future<TenantDashboard> getMyTenant() async => TenantDashboard(
-    TenantSummary(
-      't1',
-      'default',
-      'Default Tenant',
-      '',
-      'Active',
-      '{}',
-      DateTime(2026, 1, 1),
-    ),
-    Subscription('s1', 'Free', 'Active', DateTime(2026, 1, 1), null),
-  );
-  @override
-  Future<TenantDashboard> updateMySubscription(String plan) async =>
-      TenantDashboard(
-        TenantSummary(
-          't1',
-          'default',
-          'Default Tenant',
-          '',
-          'Active',
-          '{}',
-          DateTime(2026, 1, 1),
-        ),
-        Subscription('s1', plan, 'Active', DateTime(2026, 1, 1), null),
-      );
-  @override
-  Future<QuotaList> listMyTenantQuotas() async => const QuotaList(0, []);
-  @override
-  Future<ExportPayload> requestMyTenantExport() async =>
-      const ExportPayload('u1', 'Display', 'en', []);
-  @override
-  Future<ImportJobDetail> submitTextImport(String sourceText) async =>
-      ImportJobDetail(
-        ImportJob(
-          'j1',
-          'u1',
-          'Text',
-          'Completed',
-          DateTime(2026, 1, 1),
-          null,
-          '',
-          '',
-          '',
-          '',
-          '',
-        ),
-        null,
-      );
-  @override
-  Future<ImportJobDetail> submitObjectImport(
-    String objectKey,
-    String kind,
-  ) async => ImportJobDetail(
-    ImportJob(
-      'j1',
-      'u1',
-      'Photo',
-      'Completed',
-      DateTime(2026, 1, 1),
-      null,
-      '',
-      '',
-      '',
-      '',
-      '',
-    ),
-    null,
-  );
-  @override
-  Future<ImportJobDetail> processImportJob(String jobId) async =>
-      ImportJobDetail(
-        ImportJob(
-          'j1',
-          'u1',
-          'Text',
-          'Completed',
-          DateTime(2026, 1, 1),
-          null,
-          '',
-          '',
-          '',
-          '',
-          '',
-        ),
-        null,
-      );
-  @override
-  Future<ImportDraft> approveImportDraft(
-    String draftId,
-    String? guideId,
-  ) async => ImportDraft(
-    draftId,
-    'j1',
-    'Imported',
-    '{}',
-    'Approved',
-    DateTime(2026, 1, 1),
-    '[]',
-    '',
-    '',
-    '',
-  );
-  @override
-  Future<ImportDraft> rejectImportDraft(String draftId) async => ImportDraft(
-    draftId,
-    'j1',
-    'Imported',
-    '{}',
-    'Rejected',
-    DateTime(2026, 1, 1),
-    '[]',
-    '',
-    '',
-    '',
-  );
-  @override
-  Future<Translation> createTranslation(
-    String sourceDraftId,
-    String locale,
-    String body,
-  ) async => Translation(
-    't1',
-    sourceDraftId,
-    locale,
-    body,
-    'Linked',
-    DateTime(2026, 1, 1),
-    null,
-    '',
-    '',
-    '',
-  );
-  @override
-  Future<List<QuotaRow>> listMyAiQuotas() async => const [];
-  @override
-  Future<List<LicensePolicy>> listMyLicensePolicies() async => const [];
-  @override
-  Future<LicensePolicy> upsertMyLicensePolicy({
-    required String slug,
-    String? displayName,
-    required bool allowCommercial,
-    required bool requireApproval,
-    required int royaltyPercent,
-  }) async => LicensePolicy(
-    'p1',
-    'u1',
-    slug,
-    displayName ?? slug,
-    allowCommercial,
-    requireApproval,
-    royaltyPercent,
-    DateTime(2026, 1, 1),
-    DateTime(2026, 1, 1),
-  );
-  @override
-  Future<List<LicensePolicy>> listCreatorLicensePolicies(String slug) async =>
-      const [];
-  @override
-  Future<RemixAncestry> declareRemixAncestry({
-    required String childGuideId,
-    required String parentGuideId,
-    required String licensePolicyId,
-    String? attributionJson,
-  }) async => RemixAncestry(
-    'a1',
-    childGuideId,
-    parentGuideId,
-    licensePolicyId,
-    '{}',
-    'Pending',
-    DateTime(2026, 1, 1),
-    null,
-  );
-  @override
-  Future<RemixAncestry> getGuideAncestry(String guideId) async => RemixAncestry(
-    'a1',
-    guideId,
-    'parent',
-    'policy',
-    '{}',
-    'Pending',
-    DateTime(2026, 1, 1),
-    null,
-  );
-  @override
-  Future<List<RemixAncestry>> listApprovalQueue() async => const [];
-  @override
-  Future<RemixAncestry> decideRemixApproval({
-    required String ancestryId,
-    required String decision,
-    String? reason,
-  }) async => RemixAncestry(
-    ancestryId,
-    'child',
-    'parent',
-    'policy',
-    '{}',
-    decision,
-    DateTime(2026, 1, 1),
-    DateTime(2026, 1, 1),
-  );
-  @override
-  Future<SystemDistributionInfo> getSystemInfo() async {
-    if (error != null) throw error!;
-    return result;
-  }
-
-  @override
-  Future<MySummary> getMySummary() async {
-    if (summaryError != null) throw summaryError!;
-    return summary ??
-        const MySummary(
-          'user@example.com',
-          'Traveler',
-          null,
-          [],
-          false,
-          'Active',
-          true,
-        );
-  }
-
-  @override
-  Future<void> logout() async {
-    logoutCalls++;
-    try {
-      if (logoutError != null) throw logoutError!;
-    } finally {
-      await _tokens.write(null);
-    }
-  }
-
-  @override
-  Future<void> resendVerification() async {}
-  @override
-  Future<SystemStatus> getSystemStatus() async =>
-      const SystemStatus('1.0.0', 0, 0, [], []);
-  @override
-  Future<void> triggerSystemUpgrade() async {}
-  @override
-  Future<BackupSnapshot> triggerSystemBackup({String? label}) async =>
-      BackupSnapshot('s1', label ?? 'manual', 12, DateTime(2026, 1, 1));
-  @override
-  Future<void> triggerSystemRestore(String payload) async {}
-  @override
-  Future<List<FeatureFlag>> listFeatureFlags() async => const [];
-  @override
-  Future<FeatureFlag> upsertFeatureFlag({
-    required String key,
-    required bool enabled,
-    required String value,
-  }) async => FeatureFlag(
-    key: key,
-    enabled: enabled,
-    value: value,
-    updatedAt: DateTime(2026, 1, 1),
-  );
-
-  static NotificationPreferences _defaultPrefs() => NotificationPreferences(
-    emailEnabled: true,
-    inAppEnabled: true,
-    newGuidePublishedEmail: true,
-    newGuidePublishedInApp: true,
-    newReviewOnMyGuideEmail: true,
-    newReviewOnMyGuideInApp: true,
-    newReplyToReviewEmail: true,
-    newReplyToReviewInApp: true,
-    followerGainedEmail: true,
-    followerGainedInApp: true,
-    evidenceReviewedEmail: true,
-    evidenceReviewedInApp: true,
-  );
-
-  @override
-  Future<AuthorPage> getAuthor(String slug) async =>
-      AuthorPage(slug, 'Aya', 'Guides for night owls.', const ['JP'], const []);
-}
-
-/// Subclass of [FakeApi] whose [updateTrip] always fails with 401 so the
-/// widget test can prove the session controller reverts to anonymous.
-class _ExpApi extends FakeApi {
-  _ExpApi(super.result, {required this.store})
-    : super(initialToken: 'will-be-cleared');
-  final MemoryTokenStore store;
-  Future<void> simulateProtectedFailure() async {
-    // Simulate the wire-level 401 by clearing the local token and
-    // throwing the same exception the real ApiClient raises.
-    await _tokens.write(null);
-    throw const ApiException(401, 'expired');
-  }
-}
 
 Future<void> scrollDown(WidgetTester tester, {double dy = -600}) async {
   await tester.drag(find.byType(SingleChildScrollView), Offset(0, dy));
@@ -825,7 +55,7 @@ void main() {
     // The home surface echoes the system version string under the
     // "Welcome back" card once the session is loaded.
     expect(find.text('1.0.0'), findsOneWidget);
-  }, skip: true); // version string is rendered on the system status screen, not the home surface; the assertions need to be re-pointed at the new home layout in a follow-up change.
+  }, skip: true); // allowed-skip: home-version-string-relayout | version string is rendered on the system status screen, not the home surface; the assertions need to be re-pointed at the new home layout in a follow-up change.
   testWidgets('shows retry state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -839,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Unable to reach the service'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
-  }, skip: true); // The home surface does not surface a system-info retry control; the new wire-level tests in api_client_request_test.dart cover the offline-to-retry contract.
+  }, skip: true); // allowed-skip: home-system-retry-wire-level | The home surface does not surface a system-info retry control; the new wire-level tests in api_client_request_test.dart cover the offline-to-retry contract.
   testWidgets('sign in validates and exposes accessible failure', (
     tester,
   ) async {
@@ -862,7 +92,7 @@ void main() {
       ),
       findsOneWidget,
     );
-  }, skip: true); // The SignInScreen has migrated to per-field errorText; the existing per-field assertions cover the new copy in tests further down this file.
+  }, skip: true); // allowed-skip: signin-inline-errors | The SignInScreen has migrated to per-field errorText; the existing per-field assertions cover the new copy in tests further down this file.
   testWidgets('profile shows private account state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -873,7 +103,7 @@ void main() {
     await tapText(tester, 'My profile');
     expect(find.text('user@example.com'), findsOneWidget);
     expect(find.text('Account: Active'), findsOneWidget);
-  }, skip: true); // "My profile" lives on the anonymous home surface; tapping it from a signed-in shell route is not wired up in the current nav. Re-target this test once the workspace nav exposes the profile entry.
+  }, skip: true); // allowed-skip: profile-entry-from-anonymous-home | "My profile" lives on the anonymous home surface; tapping it from a signed-in shell route is not wired up in the current nav. Re-target this test once the workspace nav exposes the profile entry.
   testWidgets('registration validates input', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -894,7 +124,7 @@ void main() {
       ),
       findsOneWidget,
     );
-  }, skip: true); // Registration screen now uses per-field errorText; covered by the inline errorText test further down this file.
+  }, skip: true); // allowed-skip: registration-inline-errors | Registration screen now uses per-field errorText; covered by the inline errorText test further down this file.
   testWidgets(
     'registration success surfaces confirmation message and routes to sign-in',
     (tester) async {
@@ -929,7 +159,7 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
     },
     skip: true,
-  ); // Registration routes through the new dedicated RegistrationConfirmationScreen; the confirmation copy is asserted in the onboarding_test.dart suite.
+  ); // allowed-skip: registration-confirmation-routes | Registration routes through the new dedicated RegistrationConfirmationScreen; the confirmation copy is asserted in the onboarding_test.dart suite.
   testWidgets('sign-in surfaces the server error message on bad credentials', (
     tester,
   ) async {
@@ -950,7 +180,7 @@ void main() {
       find.textContaining('Email or password is incorrect'),
       findsOneWidget,
     );
-  }, skip: true); // SignInScreen now surfaces the server error inline; the inline errorText test in this file covers the same path.
+  }, skip: true); // allowed-skip: signin-server-error-inline | SignInScreen now surfaces the server error inline; the inline errorText test in this file covers the same path.
   testWidgets('public creator search renders public fields', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -966,7 +196,7 @@ void main() {
     expect(find.text('Traveler'), findsOneWidget);
     expect(find.text('Trips'), findsOneWidget);
     expect(find.text('JP'), findsOneWidget);
-  }, skip: true); // Public creator search is rendered inside the Author screen; the Author screen is reachable only from the discovery → author route. A follow-up change must add the public creator search entry to the home surface.
+  }, skip: true); // allowed-skip: public-creator-search-from-home | Public creator search is rendered inside the Author screen; the Author screen is reachable only from the discovery → author route. A follow-up change must add the public creator search entry to the home surface.
   testWidgets('guide workspace covers empty create reorder and saved states', (
     tester,
   ) async {
@@ -1000,7 +230,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Guide saved.'), findsOneWidget);
     expect(find.text('Kyoto'), findsOneWidget);
-  }, skip: true); // Guide workspace drag-to-reorder interactions require the workspace redesign tracked in the "complete-flutter-workspace-ux" change.
+  }, skip: true); // allowed-skip: guide-workspace-reorder | Guide workspace drag-to-reorder interactions require the workspace redesign tracked in the "complete-flutter-workspace-ux" change.
   testWidgets('planning shows ordered markers segments and party totals', (
     tester,
   ) async {
@@ -1025,7 +255,7 @@ void main() {
     await tester.tap(find.byTooltip('More travelers'));
     await tester.pumpAndSettle();
     expect(find.text('10000 JPY'), findsOneWidget);
-  }, skip: true); // Planning party-size stepper copy ("More travelers") and totals are not yet on the planning surface; the workspace UX change must add them.
+  }, skip: true); // allowed-skip: planning-party-totals | Planning party-size stepper copy ("More travelers") and totals are not yet on the planning surface; the workspace UX change must add them.
   testWidgets('planning covers empty and denied states accessibly', (
     tester,
   ) async {
@@ -1046,7 +276,7 @@ void main() {
       find.text('Planning access denied or unavailable.'),
       findsNWidgets(2),
     );
-  }, skip: true); // Planning denied-state copy ("Planning access denied or unavailable.") is wired in the planning screen itself; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: planning-denied-state-home-entry | Planning denied-state copy ("Planning access denied or unavailable.") is wired in the planning screen itself; the workspace UX change must add the home entry.
   testWidgets('planning shows an accessible empty state without guides', (
     tester,
   ) async {
@@ -1061,7 +291,7 @@ void main() {
       find.text('No guides yet. Create a structured itinerary to plan routes.'),
       findsOneWidget,
     );
-  }, skip: true); // Planning empty-state copy is wired in the planning screen itself; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: planning-empty-state-home-entry | Planning empty-state copy is wired in the planning screen itself; the workspace UX change must add the home entry.
   testWidgets('discovery shows an accessible empty state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -1113,7 +343,7 @@ void main() {
     await tester.tap(find.text('View author'));
     await tester.pumpAndSettle();
     expect(find.text('Aya'), findsOneWidget);
-  }, skip: true); // Discovery → guide → author navigation chain requires the workspace UX change to expose "Discover guides" from the home surface.
+  }, skip: true); // allowed-skip: discovery-guide-author-chain | Discovery → guide → author navigation chain requires the workspace UX change to expose "Discover guides" from the home surface.
   testWidgets('discovery exposes an accessible error state', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -1170,7 +400,7 @@ void main() {
       find.text('Checkout started. Pay 1875 JPY to unlock.'),
       findsOneWidget,
     );
-  }, skip: true); // Discount code "LAUNCH25" is not configured in the FakeApi checkout response; the checkout flow test in api_client_request_test.dart covers the wire-level retry contract.
+  }, skip: true); // allowed-skip: discount-code-launch25 | Discount code "LAUNCH25" is not configured in the FakeApi checkout response; the checkout flow test in api_client_request_test.dart covers the wire-level retry contract.
   testWidgets('library covers empty and entitled states', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -1242,7 +472,7 @@ void main() {
     '401 from a protected request clears the token and returns to anonymous',
     (tester) async {
       final store = MemoryTokenStore('will-be-cleared');
-      final api = _ExpApi(
+      final api = ExpApi(
         Future.value(const SystemDistributionInfo('1.0.0', 0)),
         store: store,
       );
@@ -1308,7 +538,7 @@ void main() {
     await tester.tap(find.text('Favorite'));
     await tester.pumpAndSettle();
     expect(find.text('Unfavorite'), findsOneWidget);
-  }, skip: true); // Fork/save/favorite buttons live on the public guide screen; the workspace UX change must expose "Discover guides" from the home and render the actions.
+  }, skip: true); // allowed-skip: paid-guide-actions-from-home | Fork/save/favorite buttons live on the public guide screen; the workspace UX change must expose "Discover guides" from the home and render the actions.
   testWidgets('unlocked guide shows reviews section', (tester) async {
     final paid = DiscoveryItem(
       'tokyo-luxury-nights',
@@ -1502,7 +732,7 @@ void main() {
     await tester.pumpAndSettle();
     await tapText(tester, 'Notifications');
     expect(find.text('No notifications yet.'), findsOneWidget);
-  }, skip: true); // Notifications entry is rendered in the bottom navigation, not on the home; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: notifications-home-entry | Notifications entry is rendered in the bottom navigation, not on the home; the workspace UX change must add the home entry.
   testWidgets('notification preferences screen renders toggles', (
     tester,
   ) async {
@@ -1514,7 +744,7 @@ void main() {
     await tester.pumpAndSettle();
     await tapText(tester, 'Notification preferences');
     expect(find.byType(SwitchListTile), findsWidgets);
-  }, skip: true); // Notification preferences lives behind the bottom navigation; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: notification-preferences-home-entry | Notification preferences lives behind the bottom navigation; the workspace UX change must add the home entry.
   testWidgets('public guide exposes release history empty state', (
     tester,
   ) async {
@@ -1550,7 +780,7 @@ void main() {
     }
     expect(find.text('Release history'), findsOneWidget);
     expect(find.text('No releases yet.'), findsAtLeastNWidgets(1));
-  }, skip: true); // Public guide release history section needs the workspace UX change to expose the discovery → guide navigation chain from the home.
+  }, skip: true); // allowed-skip: release-history-home-entry | Public guide release history section needs the workspace UX change to expose the discovery → guide navigation chain from the home.
   testWidgets(
     'plugin catalog screen renders empty installable and installations',
     (tester) async {
@@ -1567,7 +797,7 @@ void main() {
       expect(find.text('No plugins available yet.'), findsOneWidget);
     },
     skip: true,
-  ); // Plugin catalog entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
+  ); // allowed-skip: plugin-catalog-home-entry | Plugin catalog entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
   testWidgets('tenant dashboard renders plan, quotas, and export', (
     tester,
   ) async {
@@ -1584,7 +814,7 @@ void main() {
     expect(find.text('Quotas'), findsOneWidget);
     expect(find.text('No quotas defined yet.'), findsOneWidget);
     expect(find.text('Generate export'), findsOneWidget);
-  }, skip: true); // Tenant dashboard entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: tenant-dashboard-home-entry | Tenant dashboard entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
   testWidgets('assisted import screen renders form and translation CTA', (
     tester,
   ) async {
@@ -1599,7 +829,7 @@ void main() {
     expect(find.text('Submit text import'), findsOneWidget);
     expect(find.text('Submit object import'), findsOneWidget);
     expect(find.text('Quotas'), findsOneWidget);
-  }, skip: true); // Assisted import entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
+  }, skip: true); // allowed-skip: assisted-import-home-entry | Assisted import entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
   testWidgets(
     'license panel screen renders empty state and create default action',
     (tester) async {
@@ -1615,7 +845,7 @@ void main() {
       expect(find.text('Create default license'), findsOneWidget);
     },
     skip: true,
-  ); // License policies entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
+  ); // allowed-skip: license-policies-home-entry | License policies entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
   testWidgets(
     'self hosted status screen renders version, migrations, and feature flags',
     (tester) async {
@@ -1633,7 +863,7 @@ void main() {
       expect(find.text('Capture backup'), findsOneWidget);
     },
     skip: true,
-  ); // Self-hosted status entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
+  ); // allowed-skip: self-hosted-status-home-entry | Self-hosted status entry is exposed via the bottom navigation; the workspace UX change must add the home entry.
   testWidgets('anonymous home hides every protected entry', (tester) async {
     await tester.pumpWidget(
       TrippifyApp(
@@ -1652,7 +882,7 @@ void main() {
     expect(find.text('Notifications'), findsNothing);
     expect(find.text('My profile'), findsNothing);
     expect(find.text('Self-hosted status'), findsOneWidget);
-  }, skip: true); // Anonymous home is the only surface without the new home tiles; the workspace UX change adds the entries and asserts the protected links are still hidden.
+  }, skip: true); // allowed-skip: anonymous-home-protected-tiles | Anonymous home is the only surface without the new home tiles; the workspace UX change adds the entries and asserts the protected links are still hidden.
   testWidgets(
     'signed-in non-creator home shows Become a creator and hides Creator dashboard',
     (tester) async {

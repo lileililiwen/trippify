@@ -2,18 +2,13 @@
 
 ## Next spec
 
-`add-rendered-browser-and-release-quality-gates`
-
-Path: `openspec/changes/add-rendered-browser-and-release-quality-gates/`
-
-Status: planned and strictly validated; implementation has not started.
+None. The September 2026 audit backlog is fully shipped.
 
 ## Recently shipped
 
-These audit changes have been merged into `openspec/specs/` and committed:
-
-- `complete-flutter-localization-and-accessibility` (in this branch, awaiting commit)
-- `complete-flutter-workspace-ux` (in this branch, awaiting commit)
+- `add-rendered-browser-and-release-quality-gates` (this branch, awaiting commit)
+- `complete-flutter-localization-and-accessibility` (commit `85a2a4a`)
+- `complete-flutter-workspace-ux` (commit `d96e212`)
 - `align-flutter-api-methods-and-error-states` (commit `a5813da`)
 - `fail-closed-evidence-malware-scanning` (commit `40ff68e`)
 - `fix-provider-health-probes` (commit `e61bda0`)
@@ -21,15 +16,13 @@ These audit changes have been merged into `openspec/specs/` and committed:
 - `harden-cross-origin-and-runtime-secrets` (commit `4b90390`)
 - `wire-production-provider-credentials` (commit `77555e6`)
 
-The next unstarted audit change after
-`add-rendered-browser-and-release-quality-gates` is
-`complete-flutter-localization-and-accessibility` is now shipped.
+## Status
 
-## Objective
-
-Add browser workflow evidence, skip accountability, PostgreSQL upgrade,
-provider outage, and backup/restore release gates to the rendered Flutter
-web workflows and release quality gates.
+`add-rendered-browser-and-release-quality-gates` is fully implemented and
+archived. The rendered browser smoke tests, Flutter skip accountability
+gate, PostgreSQL upgrade drill, provider-outage coverage, and restorable
+backup failure-mode tests are green. All eleven audit changes from the
+September 2026 backlog are now in `openspec/specs/` with a related commit.
 
 ## Implementation workflow
 

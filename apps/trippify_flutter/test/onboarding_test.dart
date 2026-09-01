@@ -7,7 +7,7 @@ import 'package:trippify_flutter/l10n/generated/app_localizations.dart';
 import 'package:trippify_flutter/main.dart';
 import 'package:trippify_flutter/onboarding/registration_confirmation_screen.dart';
 
-import 'widget_test.dart' show FakeApi;
+import 'helpers/fake_api.dart';
 
 MaterialApp _wrapWithL10n(Widget child) => MaterialApp(
   localizationsDelegates: [

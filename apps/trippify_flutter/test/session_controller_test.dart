@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/session_controller.dart';
 
-import 'widget_test.dart' show FakeApi;
+import 'helpers/fake_api.dart';
 
 void main() {
   test('online sign out revokes once and clears the session', () async {

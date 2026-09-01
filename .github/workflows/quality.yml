@@ -3,6 +3,22 @@ on: [push, pull_request]
 jobs:
   dotnet:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: trippify
+          POSTGRES_PASSWORD: trippify_dev
+          POSTGRES_DB: trippify
+        ports:
+          - 5437:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ConnectionStrings__Postgres: Host=127.0.0.1;Port=5437;Database=trippify;Username=trippify;Password=trippify_dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -18,5 +34,54 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
       - run: flutter pub get
+      - run: dart run tool/check_flutter_skips.dart
       - run: flutter analyze
       - run: flutter test
+  postgres-upgrade-drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: trippify
+          POSTGRES_PASSWORD: trippify_dev
+          POSTGRES_DB: trippify_drill
+        ports:
+          - 5437:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ConnectionStrings__Postgres: Host=127.0.0.1;Port=5437;Database=trippify_drill;Username=trippify;Password=trippify_dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 8.0.x }
+      - run: dotnet tool install dotnet-ef -g --version 8.0.11
+      - name: Build API
+        run: dotnet build src/Trippify.Api --configuration Release
+      - name: Apply migrations to empty database, downgrade to previous release, upgrade to head
+        run: |
+          dotnet ef database update \
+            --project src/Trippify.Infrastructure \
+            --startup-project src/Trippify.Api
+          PREVIOUS=$(dotnet ef migrations list --project src/Trippify.Infrastructure --startup-project src/Trippify.Api | sed 's/[[:space:]]*$//' | grep -v 20260901043105_AddCheckoutIdempotency | tail -n 1)
+          dotnet ef database update "$PREVIOUS" --project src/Trippify.Infrastructure --startup-project src/Trippify.Api
+          dotnet ef database update --project src/Trippify.Infrastructure --startup-project src/Trippify.Api
+      - name: Smoke against the upgraded schema
+        run: |
+          (ASPNETCORE_URLS=http://127.0.0.1:8765 SelfHosted__RunMigrationsOnStartup=false dotnet run --project src/Trippify.Api --no-build >/tmp/api.log 2>&1 &)
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8765/health/live >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          STATUS=$(curl -s -o /tmp/info.json -w "%{http_code}" http://127.0.0.1:8765/api/v1/system/info)
+          if [ "$STATUS" != "200" ]; then
+            echo "Smoke endpoint returned $STATUS"
+            cat /tmp/info.json
+            exit 1
+          fi

@@ -67,3 +67,43 @@ Production deployments MUST inject every signing secret from a secret store; pla
 - `appsettings.Development.json` seeds a non-credentialed allowlist of common local Flutter dev ports (`http://localhost:3000`, `http://localhost:5000`, `http://localhost:8080`, plus the same set on `127.0.0.1`).
 - The development default for `Plugins:SigningSecret` and `ObjectStorage:SignedUrlSecret` is accepted in `Development` only. Setting `ASPNETCORE_ENVIRONMENT=Production` (or `Staging`) without overriding these values causes startup to fail.
 
+## Release quality gates
+
+The repository must satisfy these gates before a release is considered green.
+
+### Rendered Flutter workflows
+
+- The Flutter `test` target exercises the rendered widget tree through the standard VM binding and covers anonymous, traveler, creator, administrator, and responsive layout journeys. See `apps/trippify_flutter/test/release_smoke_test.dart` for the dedicated smoke tests.
+- The supported Flutter web/browser runner is `flutter test --platform chrome`. The Flutter app currently lacks a real Chrome-compatible implementation of `flutter_secure_storage` and `file_picker`, so a headless Chrome run is not yet wired into CI. The same widget assertions are executed by the VM binding; the Chrome runner is a known environment limitation that will be unblocked when the web platform implementations land.
+- The dedicated rendered smoke tests verify, end-to-end, that the anonymous surface hides protected entries, the traveler sees the workspace summary, the creator sees the Creator dashboard tile, the administrator sees the Admin operations tile, and the layout does not overflow at compact width.
+
+### Skip accountability
+
+- `apps/trippify_flutter/tool/check_flutter_skips.dart` walks every Dart test file in the `test/` directory and validates that every `skip: true` marker carries a `// allowed-skip: <id>` annotation that is registered in `tool/skip_allowlist.json`.
+- The checker fails the build when:
+  - a skip lacks an `// allowed-skip:` annotation,
+  - a skip id is missing from the allowlist,
+  - the anchored file:line in the allowlist no longer matches the current skip,
+  - the count of skips exceeds the documented budget (currently `24`).
+- The companion `test/skip_policy_test.dart` exercises the unapproved-skip, unknown-id, and budget-exceeded paths so the policy logic itself is regression-protected.
+- New skips require a new allowlist entry. Removed skips require removing the matching entry. Renaming or relocating a test file requires updating the allowlist's `path`/`line` anchor.
+
+### PostgreSQL migration drill
+
+- `tests/Trippify.ApiTests/PostgresMigrationUpgradeTests.cs` proves the EF Core migration chain is non-empty, has no duplicate keys, is orderable, and that the migrator emits a script referencing the documented identity and commerce tables.
+- `scripts/postgres-upgrade-drill.sh` runs the full disposable drill: it starts a PostGIS container, applies all migrations to an empty database, downgrades to a previous release anchor, upgrades to head, and hits `/api/v1/system/info` to prove the upgraded schema still serves traffic. The script is invoked from CI in `postgres-upgrade-drill`; when Docker or PostgreSQL is unavailable the script exits `0` and records the limitation while the static checks remain authoritative.
+
+### Provider outage coverage
+
+- `tests/Trippify.ApiTests/ProviderOutageApiTests.cs` replaces each provider with a throwing implementation and asserts the API fails safely:
+  - object-storage outage returns `5xx` for `POST /api/v1/guides/{id}/media` without a fabricated success payload;
+  - map-provider outage records the geocode status as `Unresolved` and never fabricates coordinates;
+  - evidence-scanner outage dead-letters the background scan job and keeps the attachment out of the `Ready` state;
+  - email outage does not block account creation.
+- `tests/Trippify.ApiTests/RestorableBackupTests.cs` exercises the backup round-trip, deletes the artifact on disk to confirm the restore fails safely, tampers with the bytes to confirm the checksum check rejects, exercises encrypted-snapshot key validation, and rejects schema-version mismatches before mutating the live database.
+
+### CI integration
+
+- `.github/workflows/quality.yml` runs the dotnet, Flutter, and PostgreSQL upgrade-drill jobs on every push and pull request.
+- The Flutter job runs the skip checker before `flutter analyze` and `flutter test` so an unapproved skip fails the build before any test work begins.
+

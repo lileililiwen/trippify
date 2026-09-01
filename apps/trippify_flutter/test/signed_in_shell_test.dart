@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trippify_flutter/api_client.dart';
 import 'package:trippify_flutter/shell/signed_in_shell.dart';
 
-import 'widget_test.dart' show FakeApi;
+import 'helpers/fake_api.dart';
 
 void main() {
   testWidgets('SignedInShell shows 4 destinations for non-creator', (

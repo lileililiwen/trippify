@@ -8,7 +8,8 @@ import 'package:trippify_flutter/main.dart';
 import 'package:trippify_flutter/shell/signed_in_shell.dart';
 import 'package:trippify_flutter/shell/workspace_screen.dart' as workspace;
 
-import 'widget_test.dart' show FakeApi, tapText;
+import 'helpers/fake_api.dart';
+import 'widget_test.dart' show tapText;
 
 const _systemInfo = SystemDistributionInfo('1.0.0', 0);
 
