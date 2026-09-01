@@ -87,9 +87,10 @@ public sealed class GuideApiTests(TrippifyFactory factory) : IClassFixture<Tripp
     private async Task WithDb(Func<AppDbContext, Task> action) { await using var scope = factory.Services.CreateAsyncScope(); await action(scope.ServiceProvider.GetRequiredService<AppDbContext>()); }
     private sealed class ThrowingStorage : IObjectStorage
     {
-        public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellationToken) => throw new IOException("offline");
+        public string ProviderName => "throwing";
+        public Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellation) => throw new IOException("offline");
         public Task DeleteAsync(string key, CancellationToken cancellation) => throw new IOException("offline");
-        public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken) => throw new IOException("offline");
+        public Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellation) => throw new IOException("offline");
         public Task<bool> ExistsAsync(string key, CancellationToken cancellation) => throw new IOException("offline");
     }
 }

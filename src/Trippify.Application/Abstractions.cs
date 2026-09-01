@@ -4,6 +4,7 @@ public enum ObjectStorageVisibility { Private, Public }
 
 public interface IObjectStorage
 {
+    string ProviderName { get; }
     Task<Uri> PutAsync(string key, Stream content, CancellationToken cancellation);
     Task DeleteAsync(string key, CancellationToken cancellation);
     Task<Uri> CreateSignedReadAsync(string key, TimeSpan lifetime, CancellationToken cancellation);

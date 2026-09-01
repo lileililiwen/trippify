@@ -2,9 +2,9 @@
 
 ## Next spec
 
-`fix-provider-health-probes`
+`fail-closed-evidence-malware-scanning`
 
-Path: `openspec/changes/fix-provider-health-probes/`
+Path: `openspec/changes/fail-closed-evidence-malware-scanning/`
 
 Status: planned and strictly validated; implementation has not started.
 
@@ -15,8 +15,9 @@ These audit changes have been merged into `openspec/specs/` and committed:
 - `wire-production-provider-credentials` (commit `77555e6`)
 - `harden-cross-origin-and-runtime-secrets` (commit `4b90390`)
 - `make-commerce-checkout-idempotent` (commit `0c14eae`)
+- `fix-provider-health-probes` (archived 2026-09-01; commit pending)
 
-The next unstarted audit change is `fail-closed-evidence-malware-scanning`.
+The next unstarted audit change after `fail-closed-evidence-malware-scanning` is `align-flutter-api-methods-and-error-states`.
 
 ## Objective
 
