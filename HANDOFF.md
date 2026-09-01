@@ -2,11 +2,21 @@
 
 ## Next spec
 
-`harden-cross-origin-and-runtime-secrets`
+`fix-provider-health-probes`
 
-Path: `openspec/changes/harden-cross-origin-and-runtime-secrets/`
+Path: `openspec/changes/fix-provider-health-probes/`
 
 Status: planned and strictly validated; implementation has not started.
+
+## Recently shipped
+
+These audit changes have been merged into `openspec/specs/` and committed:
+
+- `wire-production-provider-credentials` (commit `77555e6`)
+- `harden-cross-origin-and-runtime-secrets` (commit `4b90390`)
+- `make-commerce-checkout-idempotent` (commit `0c14eae`)
+
+The next unstarted audit change is `fail-closed-evidence-malware-scanning`.
 
 ## Objective
 

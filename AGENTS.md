@@ -1,4 +1,4 @@
-# Agents.md
+# AGENTS.md
 
 > This document is the normative contract for AI agents and humans working on
 > Trippify. Every rule here MUST be followed unless an approved OpenSpec change
@@ -321,17 +321,32 @@ The repository currently defines these capabilities:
 
 A capability's presence in this list means its spec is the source of truth.
 A change is "shipped" only after `openspec archive` has merged the delta
-into `openspec/specs/`.
+into `openspec/specs/` and the related implementation and verification are
+committed. The nine active audit changes listed in `openspec/ROADMAP.md` are
+planned work, not shipped capability.
 
 ### 8.2 Recommended implementation sequence
 
 The active roadmap lives in `openspec/ROADMAP.md`. Foundation, marketplace
-MVP, trust, and distribution changes are already merged. The next
-incremental changes should be picked from the active `openspec list` in the
-order the user (or maintainer) requests — never silently from this
-document.
+MVP, trust, distribution, and the previously completed production slices are
+already merged. The next change is explicitly recorded in `HANDOFF.md` and is
+`wire-production-provider-credentials`. Execute exactly one active change at
+a time in roadmap order; do not silently skip, combine, archive, or commit
+later changes.
 
-### 8.3 Deferred from MVP
+### 8.3 Planning-only audit backlog
+
+The current audit backlog contains nine strictly validated changes covering
+provider authentication, runtime security, commerce idempotency, health
+probes, evidence scanning, Flutter API parity, workspace UX, localization and
+accessibility, and rendered release gates. Their tasks are intentionally
+unchecked. The repository is currently in planning state for this backlog.
+
+`HANDOFF.md` is the concise recovery pointer for the next change. It is not a
+completion oracle; Git history, tests, migration evidence, and the archived
+OpenSpec result are authoritative.
+
+### 8.4 Deferred from MVP
 
 Native apps; social community and feeds; live streaming; short video;
 multi-level distribution; owned retail; livestream commerce; complex
@@ -347,6 +362,7 @@ membership levels; and international multi-currency.
 - `openspec/specs/*/spec.md` — current capability source of truth
 - `openspec/changes/<name>/` — proposed and active implementation changes
 - `openspec/changes/archive/` — completed changes
+- `HANDOFF.md` — concise next-change pointer and verification state
 - `docs/*.md` — per-domain design notes (identity, guides, planning,
   discovery, commerce, library, reviews, verified trips, operations,
   notifications, versioning, plugins, managed SaaS, assisted import,

@@ -3,3 +3,19 @@
 .dart_tool/
 build/
 .env
+
+# Generated agent/code-index state
+**/.codegraph/
+
+# Flutter and IDE output
+**/.flutter-plugins-dependencies
+**/.idea/
+**/*.iml
+**/local.properties
+**/ephemeral/
+**/GeneratedPluginRegistrant.*
+**/coverage/
+
+# Local provider/runtime data
+**/trippify-objects/
+*.log

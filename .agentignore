@@ -1,0 +1,26 @@
+# Generated agent/code-index state
+**/.codegraph/
+
+# Build and dependency output
+**/bin/
+**/obj/
+**/.dart_tool/
+**/build/
+**/.flutter-plugins-dependencies
+
+# IDE, platform, and local runtime noise
+**/.idea/
+**/*.iml
+**/.vscode/
+**/local.properties
+**/ephemeral/
+**/GeneratedPluginRegistrant.*
+**/*.log
+**/.DS_Store
+
+# Secrets and transient data
+**/.env
+**/.env.*
+!**/.env.example
+**/trippify-objects/
+**/coverage/
