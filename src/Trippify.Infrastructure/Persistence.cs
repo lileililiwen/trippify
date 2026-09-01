@@ -27,6 +27,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : Ident
     public DbSet<CommerceLedgerEntry> CommerceLedgerEntries => Set<CommerceLedgerEntry>();
     public DbSet<GuideDiscount> GuideDiscounts => Set<GuideDiscount>();
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
+    public DbSet<CheckoutIdempotencyKey> CheckoutIdempotencyKeys => Set<CheckoutIdempotencyKey>();
     public DbSet<GuideFavorite> GuideFavorites => Set<GuideFavorite>();
     public DbSet<UserTrip> UserTrips => Set<UserTrip>();
     public DbSet<GuideReview> GuideReviews => Set<GuideReview>();

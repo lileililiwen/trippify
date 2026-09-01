@@ -62,6 +62,21 @@ public sealed class PaymentWebhookEvent
     public DateTimeOffset ProcessedAt { get; init; }
 }
 
+public sealed class CheckoutIdempotencyKey
+{
+    public Guid Id { get; init; }
+    public Guid BuyerUserId { get; init; }
+    public required string Scope { get; init; }
+    public required string Key { get; init; }
+    public Guid GuideId { get; init; }
+    public long AmountMinorUnits { get; init; }
+    public required string CurrencyCode { get; init; }
+    public string? DiscountCode { get; init; }
+    public Guid OrderId { get; init; }
+    public required string ProviderName { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
 public sealed class GuideOrderConfiguration : IEntityTypeConfiguration<GuideOrder>
 {
     public void Configure(EntityTypeBuilder<GuideOrder> e)
@@ -121,5 +136,23 @@ public sealed class PaymentWebhookEventConfiguration : IEntityTypeConfiguration<
         e.ToTable("payment_webhook_events"); e.HasKey(x => x.EventId);
         e.Property(x => x.EventId).HasMaxLength(200);
         e.Property(x => x.Type).HasMaxLength(50);
+    }
+}
+
+public sealed class CheckoutIdempotencyKeyConfiguration : IEntityTypeConfiguration<CheckoutIdempotencyKey>
+{
+    public void Configure(EntityTypeBuilder<CheckoutIdempotencyKey> e)
+    {
+        e.ToTable("checkout_idempotency_keys"); e.HasKey(x => x.Id);
+        e.Property(x => x.Scope).HasMaxLength(40);
+        e.Property(x => x.Key).HasMaxLength(200);
+        e.Property(x => x.CurrencyCode).HasMaxLength(3);
+        e.Property(x => x.DiscountCode).HasMaxLength(60);
+        e.Property(x => x.ProviderName).HasMaxLength(40);
+        e.HasIndex(x => new { x.BuyerUserId, x.Scope, x.Key }).IsUnique();
+        e.HasIndex(x => x.OrderId).IsUnique();
+        e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.BuyerUserId).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne<TravelGuide>().WithMany().HasForeignKey(x => x.GuideId).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne<GuideOrder>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
     }
 }

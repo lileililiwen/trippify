@@ -5,6 +5,7 @@ using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Npgsql;
 using Trippify.Application;
 using Trippify.Infrastructure;
 
@@ -12,6 +13,7 @@ namespace Trippify.Api;
 
 public static class CommerceEndpoints
 {
+    private const string CheckoutScope = "checkout";
     private static readonly Meter CommerceMeter = new("Trippify.Commerce");
     private static readonly Counter<long> CommerceCommands = CommerceMeter.CreateCounter<long>("trippify.commerce.commands");
     public static void MapCommerce(this WebApplication app)
@@ -24,7 +26,7 @@ public static class CommerceEndpoints
         app.MapPost("/api/v1/commerce/webhook", Webhook);
     }
 
-    private static async Task<IResult> Checkout(CheckoutRequest request, ClaimsPrincipal principal, AppDbContext db, IPaymentGateway gateway, IConfiguration configuration, IClock clock)
+    private static async Task<IResult> Checkout(HttpRequest httpRequest, CheckoutRequest request, ClaimsPrincipal principal, AppDbContext db, IPaymentGateway gateway, IConfiguration configuration, IClock clock)
     {
         var buyer = IdentityEndpoints.CurrentUserId(principal);
         var guide = await db.TravelGuides.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.GuideId);
@@ -42,7 +44,25 @@ public static class CommerceEndpoints
         }
         var payable = guide.PriceMinorUnits.Value - discountAmount;
         var now = clock.UtcNow;
-        var idempotencyKey = $"guide:{guide.Id}:buyer:{buyer}:{now.Ticks}";
+        var headerKey = NormalizeIdempotencyKey(httpRequest.Headers["Idempotency-Key"].ToString());
+        if (httpRequest.Headers.ContainsKey("Idempotency-Key") && headerKey is null)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["idempotencyKey"] = ["Idempotency-Key must be 8 to 200 characters of letters, digits, '-', '_', or '.'."] });
+        var idempotencyKey = headerKey ?? $"guide:{guide.Id}:buyer:{buyer}:{appliedCode?.ToUpperInvariant() ?? "-"}";
+        var existing = await db.CheckoutIdempotencyKeys.AsNoTracking()
+            .Where(x => x.BuyerUserId == buyer && x.Scope == CheckoutScope && x.Key == idempotencyKey)
+            .Select(x => new { x.GuideId, x.AmountMinorUnits, x.CurrencyCode, x.DiscountCode, x.OrderId })
+            .SingleOrDefaultAsync();
+        if (existing is not null)
+        {
+            var payloadConflict = existing.GuideId != guide.Id
+                || existing.AmountMinorUnits != payable
+                || !string.Equals(existing.CurrencyCode, guide.CurrencyCode, StringComparison.Ordinal)
+                || !string.Equals(existing.DiscountCode ?? string.Empty, appliedCode ?? string.Empty, StringComparison.Ordinal);
+            if (payloadConflict)
+                return Results.Conflict(new { error = "idempotency-key-reuse", message = "This idempotency key was already used for a different checkout payload." });
+            var prior = await db.GuideOrders.AsNoTracking().SingleAsync(x => x.Id == existing.OrderId);
+            return Results.Accepted($"/api/v1/commerce/orders/{prior.Id}", new CheckoutResponse(prior.Id, prior.CheckoutReference, string.Empty, prior.AmountMinorUnits, prior.CurrencyCode, prior.ProviderName));
+        }
         string reference; string checkoutUrl; string providerName;
         try
         {
@@ -53,9 +73,57 @@ public static class CommerceEndpoints
         }
         catch (Exception error) when (error is NotSupportedException or IOException or InvalidOperationException) { return Results.Problem("Payments are unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable); }
         var order = new GuideOrder { Id = Guid.NewGuid(), GuideId = guide.Id, BuyerUserId = buyer, AmountMinorUnits = payable, CurrencyCode = guide.CurrencyCode!, DiscountCode = appliedCode, DiscountAmountMinorUnits = discountAmount, CheckoutReference = reference, ProviderReference = reference, ProviderName = providerName, CreatedAt = now };
-        db.GuideOrders.Add(order); await db.SaveChangesAsync();
+        var keyRecord = new CheckoutIdempotencyKey { Id = Guid.NewGuid(), BuyerUserId = buyer, Scope = CheckoutScope, Key = idempotencyKey, GuideId = guide.Id, AmountMinorUnits = payable, CurrencyCode = guide.CurrencyCode!, DiscountCode = appliedCode, OrderId = order.Id, ProviderName = providerName, CreatedAt = now };
+        db.GuideOrders.Add(order);
+        db.CheckoutIdempotencyKeys.Add(keyRecord);
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var winner = await db.CheckoutIdempotencyKeys.AsNoTracking()
+                .Where(x => x.BuyerUserId == buyer && x.Scope == CheckoutScope && x.Key == idempotencyKey)
+                .SingleAsync();
+            var prior = await db.GuideOrders.AsNoTracking().SingleAsync(x => x.Id == winner.OrderId);
+            return Results.Accepted($"/api/v1/commerce/orders/{prior.Id}", new CheckoutResponse(prior.Id, prior.CheckoutReference, string.Empty, prior.AmountMinorUnits, prior.CurrencyCode, prior.ProviderName));
+        }
         CommerceCommands.Add(1, new KeyValuePair<string, object?>("operation", "checkout"));
         return Results.Accepted($"/api/v1/commerce/orders/{order.Id}", new CheckoutResponse(order.Id, reference, checkoutUrl, payable, order.CurrencyCode, providerName));
+    }
+
+    private static string? NormalizeIdempotencyKey(string raw)
+    {
+        var trimmed = raw?.Trim() ?? string.Empty;
+        if (trimmed.Length is < 8 or > 200) return null;
+        foreach (var ch in trimmed)
+        {
+            if (!(char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.')) return null;
+        }
+        return trimmed;
+    }
+
+    private static bool IsUniqueViolation(Exception? error)
+    {
+        while (error is not null)
+        {
+            if (error is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation) return true;
+            if (error is ArgumentException argEx && argEx.Message.StartsWith("An item with the same key has already been added", StringComparison.Ordinal))
+            {
+                return true;
+            }
+            var message = error.Message;
+            if (!string.IsNullOrEmpty(message)
+                && (message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("cannot be added because another instance with the same key", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("already being tracked", StringComparison.OrdinalIgnoreCase)
+                    || message.StartsWith("An item with the same key has already been added", StringComparison.Ordinal)))
+                return true;
+            error = error.InnerException;
+        }
+        return false;
     }
 
     private static async Task<IResult> MyOrders(ClaimsPrincipal principal, AppDbContext db)
@@ -118,7 +186,7 @@ public static class CommerceEndpoints
             var provided = httpRequest.Headers["X-Webhook-Secret"].ToString();
             if (!FixedTimeEquals(sharedSecret, provided)) return Results.Unauthorized();
         }
-        if (await db.PaymentWebhookEvents.AnyAsync(x => x.EventId == request.EventId)) return Results.Ok(new { replayed = true });
+        if (await db.PaymentWebhookEvents.AsNoTracking().AnyAsync(x => x.EventId == request.EventId)) return Results.Ok(new { replayed = true });
         var order = await db.GuideOrders.SingleOrDefaultAsync(x => x.CheckoutReference == request.CheckoutReference);
         if (order is null) return Results.NotFound();
         var now = clock.UtcNow;
@@ -137,7 +205,14 @@ public static class CommerceEndpoints
                 break;
         }
         db.PaymentWebhookEvents.Add(new PaymentWebhookEvent { EventId = request.EventId, Type = request.Type, ProcessedAt = now });
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (IsUniqueViolation(ex))
+        {
+            return Results.Ok(new { replayed = true });
+        }
         CommerceCommands.Add(1, new KeyValuePair<string, object?>("operation", "webhook:" + request.Type));
         return Results.Ok(new { orderId = order.Id, status = order.Status.ToString(), signed = signed });
     }

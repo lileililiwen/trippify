@@ -196,6 +196,7 @@ class FakeApi implements AppApi {
   Future<CheckoutSession> checkout(
     String guideId, {
     String? discountCode,
+    String? idempotencyKey,
   }) async {
     if (routeError != null) throw routeError!;
     return CheckoutSession('order-1', 'cs_test_1', 'https://example.test/cs_test_1', 1875, 'JPY', 'test');

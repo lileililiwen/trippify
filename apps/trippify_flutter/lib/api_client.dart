@@ -134,7 +134,7 @@ abstract interface class AppApi {
   });
   Future<PublicGuide> getPublicGuide(String slug);
   Future<AuthorPage> getAuthor(String slug);
-  Future<CheckoutSession> checkout(String guideId, {String? discountCode});
+  Future<CheckoutSession> checkout(String guideId, {String? discountCode, String? idempotencyKey});
   Future<List<Entitlement>> getEntitlements();
   Future<void> addFavorite(String guideId);
   Future<void> removeFavorite(String guideId);
@@ -1246,7 +1246,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> resendVerification() =>
-      _request('POST', '/api/v1/auth/resend-confirmation', null);
+      _request('POST', '/api/v1/auth/resend-confirmation', null, const {});
 
   @override
   Future<PrivateProfile> getProfile() async {
@@ -1292,7 +1292,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<GuideSummary>> getMyGuides() async {
-    final values = await _request('GET', '/api/v1/guides', null) as List;
+    final values = await _request('GET', '/api/v1/guides', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return GuideSummary(
@@ -1621,12 +1621,14 @@ class ApiClient implements AppApi {
   }
 
   @override
-  Future<CheckoutSession> checkout(String guideId, {String? discountCode}) async {
-    final v = await _json('POST', '/api/v1/commerce/checkout', {
+  Future<CheckoutSession> checkout(String guideId, {String? discountCode, String? idempotencyKey}) async {
+    final headers = <String, String>{};
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) headers['Idempotency-Key'] = idempotencyKey;
+    final v = await _jsonWithHeaders('POST', '/api/v1/commerce/checkout', {
       'guideId': guideId,
       if (discountCode != null && discountCode.isNotEmpty)
         'discountCode': discountCode,
-    });
+    }, headers);
     return CheckoutSession(
       v['orderId'] as String,
       v['checkoutReference'] as String,
@@ -1639,7 +1641,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Entitlement>> getEntitlements() async {
-    final values = await _request('GET', '/api/v1/commerce/entitlements', null) as List;
+    final values = await _request('GET', '/api/v1/commerce/entitlements', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Entitlement(
@@ -1653,14 +1655,14 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> addFavorite(String guideId) =>
-      _request('POST', '/api/v1/library/favorites/$guideId', null);
+      _request('POST', '/api/v1/library/favorites/$guideId', null, const {});
   @override
   Future<void> removeFavorite(String guideId) =>
-      _request('DELETE', '/api/v1/library/favorites/$guideId', null);
+      _request('DELETE', '/api/v1/library/favorites/$guideId', null, const {});
 
   @override
   Future<List<Favorite>> listFavorites() async {
-    final values = await _request('GET', '/api/v1/library/favorites', null) as List;
+    final values = await _request('GET', '/api/v1/library/favorites', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Favorite(
@@ -1675,7 +1677,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Trip>> listTrips() async {
-    final values = await _request('GET', '/api/v1/library/trips', null) as List;
+    final values = await _request('GET', '/api/v1/library/trips', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       return Trip(
@@ -1741,7 +1743,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<List<Review>> listReviews(String guideId) async {
-    final values = await _request('GET', '/api/v1/guides/$guideId/reviews', null) as List;
+    final values = await _request('GET', '/api/v1/guides/$guideId/reviews', null, const {}) as List;
     return values.map((item) {
       final v = item as Map<String, dynamic>;
       final replyData = v['reply'] as Map<String, dynamic>?;
@@ -1822,7 +1824,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> deleteReview(String reviewId) =>
-      _request('DELETE', '/api/v1/reviews/$reviewId', null);
+      _request('DELETE', '/api/v1/reviews/$reviewId', null, const {});
 
   @override
   Future<Reply> replyToReview(String reviewId, String body) async {
@@ -1932,7 +1934,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> removeEvidenceAttachment(String attachmentId) =>
-      _request('DELETE', '/api/v1/evidence/attachments/$attachmentId', null);
+      _request('DELETE', '/api/v1/evidence/attachments/$attachmentId', null, const {});
 
   @override
   Future<EvidenceAttachmentDownload> getEvidenceAttachmentDownload(String attachmentId) async {
@@ -2137,7 +2139,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> unfollowCreator(String slug) =>
-      _request('DELETE', '/api/v1/creators/$slug/follow', null);
+      _request('DELETE', '/api/v1/creators/$slug/follow', null, const {});
 
   @override
   Future<int> getCreatorFollowersCount(String slug) async {
@@ -2161,7 +2163,7 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> markNotificationRead(String id) =>
-      _request('POST', '/api/v1/me/notifications/$id/read', null);
+      _request('POST', '/api/v1/me/notifications/$id/read', null, const {});
 
   @override
   Future<NotificationPreferences> getNotificationPreferences() async {
@@ -2322,15 +2324,15 @@ class ApiClient implements AppApi {
 
   @override
   Future<void> enablePlugin(String pluginId) =>
-      _request('POST', '/api/v1/me/plugins/$pluginId/enable', null);
+      _request('POST', '/api/v1/me/plugins/$pluginId/enable', null, const {});
 
   @override
   Future<void> disablePlugin(String pluginId) =>
-      _request('POST', '/api/v1/me/plugins/$pluginId/disable', null);
+      _request('POST', '/api/v1/me/plugins/$pluginId/disable', null, const {});
 
   @override
   Future<void> uninstallPlugin(String pluginId) =>
-      _request('DELETE', '/api/v1/me/plugins/$pluginId', null);
+      _request('DELETE', '/api/v1/me/plugins/$pluginId', null, const {});
 
   static PluginSummary _toPlugin(Map<String, dynamic> v) => PluginSummary(
         v['id'] as String,
@@ -2690,7 +2692,17 @@ class ApiClient implements AppApi {
     String path,
     Map<String, dynamic>? body,
   ) async {
-    final value = await _request(method, path, body);
+    final value = await _request(method, path, body, const {});
+    return value as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> _jsonWithHeaders(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+    Map<String, String> extraHeaders,
+  ) async {
+    final value = await _request(method, path, body, extraHeaders);
     return value as Map<String, dynamic>;
   }
 
@@ -2698,11 +2710,13 @@ class ApiClient implements AppApi {
     String method,
     String path,
     Map<String, dynamic>? body,
+    Map<String, String> extraHeaders,
   ) async {
     final token = await _tokens.read();
     final headers = {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
+      ...extraHeaders,
     };
     final uri = baseUri.resolve(path);
     final response = switch (method) {

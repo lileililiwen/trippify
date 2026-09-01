@@ -956,20 +956,42 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
   }
 
   Future<void> buy(PublicGuide data) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final key = _idempotencyKey ??= _newIdempotencyKey(data.slug);
     try {
       final session = await widget.api.checkout(
         data.slug,
         discountCode: discount.text.trim(),
+        idempotencyKey: key,
       );
+      if (!mounted) return;
       setState(
         () => status = session.checkoutUrl.isEmpty
             ? 'Checkout started. Pay ${session.amountMinorUnits} '
                 '${session.currencyCode} to unlock.'
             : 'Open this URL to pay: ${session.checkoutUrl}',
       );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        setState(() => status = 'This checkout attempt was already used for a different purchase. Start a new checkout to continue.');
+      } else {
+        setState(() => status = _checkoutFailureMessage(error));
+      }
     } catch (error) {
+      if (!mounted) return;
       setState(() => status = _checkoutFailureMessage(error));
+      messenger.showSnackBar(const SnackBar(content: Text('Checkout failed. Retry to resume.')));
     }
+  }
+
+  String? _idempotencyKey;
+  String _newIdempotencyKey(String slug) {
+    final nonce = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    final rand = identityHashCode(this).toUnsigned(20).toRadixString(36);
+    final raw = 'trippify-$slug-$nonce-$rand';
+    if (raw.length >= 16) return raw.length > 200 ? raw.substring(0, 200) : raw;
+    return raw.padRight(16, '0');
   }
 
   String _checkoutFailureMessage(Object error) {
