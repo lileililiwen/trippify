@@ -19,10 +19,11 @@ public sealed record NotificationDeliveryPayload(Guid UserId, NotificationKind K
 public sealed record EvidenceAttachmentScanPayload(Guid AttachmentId);
 public sealed record EvidenceAttachmentCleanupPayload();
 
-public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippify.Application.IEmailSender email, IObjectStorage storage, ILogger<BackgroundJobProcessor> logger)
+public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippify.Application.IEmailSender email, IObjectStorage storage, Trippify.Application.IEvidenceScanner scanner, ILogger<BackgroundJobProcessor> logger)
 {
     private static readonly Meter Meter = new("Trippify.BackgroundJobs");
     private static readonly Counter<long> Outcomes = Meter.CreateCounter<long>("trippify.backgroundjobs.outcomes");
+    private static readonly Counter<long> ScanOutcomes = Meter.CreateCounter<long>("trippify.evidence.scans");
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
     private static readonly SemaphoreSlim NonRelationalClaimGate = new(1, 1);
 
@@ -85,6 +86,10 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
             {
                 job.Status = BackgroundJobStatus.DeadLetter;
                 job.CompletedAt = clock.UtcNow;
+                if (job.Type == BackgroundJobTypes.EvidenceAttachmentScan)
+                {
+                    await MarkAttachmentDeadLetteredAsync(job, cancellationToken);
+                }
             }
             else
             {
@@ -139,16 +144,65 @@ public sealed class BackgroundJobProcessor(AppDbContext db, IClock clock, Trippi
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task MarkAttachmentDeadLetteredAsync(BackgroundJob job, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var payload = JsonSerializer.Deserialize<EvidenceAttachmentScanPayload>(job.Payload);
+            if (payload is null) return;
+            var attachment = await db.EvidenceAttachments.SingleOrDefaultAsync(x => x.Id == payload.AttachmentId, cancellationToken);
+            if (attachment is null || attachment.State != EvidenceAttachmentState.Scanning) return;
+            attachment.State = EvidenceAttachmentState.Rejected;
+            attachment.ScanFailureCode = string.IsNullOrEmpty(job.FailureCode) ? "scanner-unavailable" : $"scanner-unavailable:{job.FailureCode}";
+            logger.LogWarning("Evidence attachment {AttachmentId} dead-lettered after {Attempts} scan attempts.", attachment.Id, job.Attempts);
+        }
+        catch (Exception error)
+        {
+            logger.LogWarning(error, "Failed to mark attachment dead-lettered for job {JobId}.", job.Id);
+        }
+    }
+
     private async Task HandleEvidenceAttachmentScan(EvidenceAttachmentScanPayload payload, CancellationToken cancellationToken)
     {
         var attachment = await db.EvidenceAttachments.SingleOrDefaultAsync(x => x.Id == payload.AttachmentId, cancellationToken);
-        if (attachment is null || attachment.State != EvidenceAttachmentState.Scanning) return;
-        // Local-mode scanner only enforces state transitions; production deployments
-        // would replace this with a real malware scanner via IObjectStorage or a
-        // dedicated IScanner abstraction. Idempotency is preserved by re-checking
-        // the current state before transitioning.
-        attachment.State = EvidenceAttachmentState.Ready;
-        attachment.ScanFailureCode = null;
+        if (attachment is null) return;
+        if (attachment.State != EvidenceAttachmentState.Scanning) return;
+        EvidenceScanResult result;
+        try
+        {
+            result = await scanner.ScanAsync(new EvidenceScanRequest(attachment.StorageKey, attachment.ContentType, attachment.Sha256, attachment.SizeBytes), cancellationToken);
+        }
+        catch (EvidenceScannerUnavailableException)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            logger.LogWarning(error, "Evidence scanner raised an unexpected error for attachment {AttachmentId}.", attachment.Id);
+            throw new EvidenceScannerUnavailableException("Evidence scanner raised an unexpected error.", error);
+        }
+        switch (result.Outcome)
+        {
+            case EvidenceScanOutcome.Clean:
+                attachment.State = EvidenceAttachmentState.Ready;
+                attachment.ScanFailureCode = null;
+                break;
+            case EvidenceScanOutcome.Infected:
+                attachment.State = EvidenceAttachmentState.Rejected;
+                attachment.ScanFailureCode = string.IsNullOrEmpty(result.FailureCode) ? "malware-detected" : $"malware:{result.FailureCode}";
+                logger.LogWarning("Evidence attachment {AttachmentId} rejected as infected by {Provider}.", attachment.Id, result.ProviderName);
+                break;
+            case EvidenceScanOutcome.Invalid:
+                attachment.State = EvidenceAttachmentState.Rejected;
+                attachment.ScanFailureCode = string.IsNullOrEmpty(result.FailureCode) ? "scan-invalid" : $"invalid:{result.FailureCode}";
+                logger.LogWarning("Evidence attachment {AttachmentId} rejected as invalid by {Provider}.", attachment.Id, result.ProviderName);
+                break;
+            case EvidenceScanOutcome.Unavailable:
+                throw new EvidenceScannerUnavailableException($"Evidence scanner {result.ProviderName} reported unavailable.");
+            default:
+                throw new EvidenceScannerUnavailableException($"Evidence scanner returned unknown outcome {result.Outcome}.");
+        }
+        ScanOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", result.Outcome.ToString()), new KeyValuePair<string, object?>("provider", result.ProviderName));
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -266,6 +320,59 @@ public static class BackgroundJobEndpoints
         {
             var rows = await db.BackgroundJobs.AsNoTracking().GroupBy(x => new { x.Type, x.Status }).Select(x => new { x.Key.Type, status = x.Key.Status.ToString(), count = x.Count(), oldestAvailableAt = x.Min(j => j.AvailableAt) }).ToListAsync();
             return Results.Ok(new { total = rows.Sum(x => x.count), items = rows });
+        }).RequireAuthorization(p => p.RequireRole("Administrator"));
+        app.MapGet("/api/v1/admin/background-jobs/evidence-scans", async (AppDbContext db) =>
+        {
+            var dead = await db.BackgroundJobs.AsNoTracking()
+                .Where(x => x.Type == BackgroundJobTypes.EvidenceAttachmentScan && x.Status == BackgroundJobStatus.DeadLetter)
+                .OrderByDescending(x => x.CompletedAt)
+                .Take(50)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Attempts,
+                    x.FailureCode,
+                    x.CompletedAt,
+                    Payload = x.Payload,
+                })
+                .ToListAsync();
+            var attachmentIds = new List<Guid>();
+            foreach (var entry in dead)
+            {
+                try
+                {
+                    var payload = JsonSerializer.Deserialize<EvidenceAttachmentScanPayload>(entry.Payload);
+                    if (payload is not null) attachmentIds.Add(payload.AttachmentId);
+                }
+                catch (JsonException) { /* skip malformed */ }
+            }
+            var attachments = await db.EvidenceAttachments.AsNoTracking()
+                .Where(a => attachmentIds.Contains(a.Id))
+                .Select(a => new { a.Id, a.State, a.ScanFailureCode })
+                .ToListAsync();
+            var lookup = attachments.ToDictionary(a => a.Id);
+            return Results.Ok(new
+            {
+                items = dead.Select(d =>
+                {
+                    Guid? attachmentId = null;
+                    try
+                    {
+                        var payload = JsonSerializer.Deserialize<EvidenceAttachmentScanPayload>(d.Payload);
+                        if (payload is not null) attachmentId = payload.AttachmentId;
+                    }
+                    catch (JsonException) { }
+                    var attachment = attachmentId.HasValue && lookup.TryGetValue(attachmentId.Value, out var found) ? found : null;
+                    return new
+                    {
+                        d.Id,
+                        d.Attempts,
+                        d.FailureCode,
+                        d.CompletedAt,
+                        attachment,
+                    };
+                })
+            });
         }).RequireAuthorization(p => p.RequireRole("Administrator"));
     }
 }

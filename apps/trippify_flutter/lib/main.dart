@@ -2319,16 +2319,18 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
                 children: [
                   for (final attachment in reviewerAttachments)
                     ListTile(
-                      leading: Icon(attachment.state == 'Ready'
+                      leading: Icon(attachment.isReady
                           ? Icons.verified_outlined
-                          : Icons.shield_outlined),
+                          : attachment.isRejected
+                              ? Icons.error_outline
+                              : Icons.shield_outlined),
                       title: Text(attachment.fileName),
                       subtitle: Text(
-                        '${attachment.contentType} · ${attachment.sizeBytes} bytes · ${attachment.state}'
+                        '${attachment.contentType} · ${attachment.sizeBytes} bytes · ${_attachmentStateLabel(attachment)}'
                         '${attachment.scanFailureCode != null ? ' · ${attachment.scanFailureCode}' : ''}',
                       ),
                       trailing: TextButton(
-                        onPressed: attachment.state == 'Ready'
+                        onPressed: attachment.isReady
                             ? () => _openReviewerDownload(attachment.id)
                             : null,
                         child: const Text('Download'),
@@ -2341,6 +2343,14 @@ class _AdminOperationsScreenState extends State<AdminOperationsScreen> {
       ),
     );
   }
+}
+
+String _attachmentStateLabel(EvidenceAttachmentSummary attachment) {
+  if (attachment.isReady) return 'Ready';
+  if (attachment.isRejected) return 'Rejected (scan failed)';
+  if (attachment.isScanning) return 'Scanning for malware…';
+  if (attachment.isStaged) return 'Awaiting upload';
+  return attachment.state;
 }
 
 class _ReviewSection extends StatefulWidget {

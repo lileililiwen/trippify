@@ -17,7 +17,7 @@ public sealed class BackgroundJob
     public required string IdempotencyKey { get; init; }
     public BackgroundJobStatus Status { get; set; } = BackgroundJobStatus.Pending;
     public int Attempts { get; set; }
-    public int MaxAttempts { get; init; } = 5;
+    public int MaxAttempts { get; set; } = 5;
     public DateTimeOffset AvailableAt { get; set; }
     public string? LeaseOwner { get; set; }
     public DateTimeOffset? LeaseExpiresAt { get; set; }

@@ -88,3 +88,15 @@ public interface IBackgroundJobQueue
 }
 public interface IClock { DateTimeOffset UtcNow { get; } }
 public sealed class ModuleMarker;
+
+public enum EvidenceScanOutcome { Clean, Infected, Invalid, Unavailable }
+
+public sealed record EvidenceScanRequest(string StorageKey, string ContentType, string Sha256, long SizeBytes);
+
+public sealed record EvidenceScanResult(EvidenceScanOutcome Outcome, string ProviderName, string FailureCode);
+
+public interface IEvidenceScanner
+{
+    string ProviderName { get; }
+    Task<EvidenceScanResult> ScanAsync(EvidenceScanRequest request, CancellationToken cancellation);
+}

@@ -132,6 +132,12 @@ builder.Services.AddSingleton<IAiAssistant>(sp =>
     return new HttpAiAssistant(options, client, logger);
 });
 builder.Services.AddHttpClient(nameof(HttpAiAssistant));
+var scannerOptions = EvidenceScannerOptions.Bind(builder.Configuration);
+scannerOptions.EnsureEnvironmentPolicy(builder.Environment.EnvironmentName);
+scannerOptions.Validate();
+builder.Services.AddSingleton(scannerOptions);
+builder.Services.AddHttpClient(nameof(HttpEvidenceScanner));
+builder.Services.AddSingleton<IEvidenceScanner>(sp => EvidenceScannerRegistration.BuildEvidenceScanner(sp, sp.GetRequiredService<EvidenceScannerOptions>()));
 builder.Services.AddScoped<IBackgroundJobQueue, DurableBackgroundJobQueue>(); builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<BackgroundJobProcessor>(); builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddTransient<Microsoft.AspNetCore.Identity.IEmailSender<AppUser>, IdentityEmailSender>();
