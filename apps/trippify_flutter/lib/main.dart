@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api_client.dart';
 import 'design/states.dart';
 import 'design/theme.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'onboarding/registration_confirmation_screen.dart';
 import 'session_controller.dart';
 import 'shell/signed_in_shell.dart';
@@ -62,8 +63,11 @@ class _TrippifyAppState extends State<TrippifyApp> {
     theme: lightTheme,
     darkTheme: darkTheme,
     themeMode: ThemeMode.system,
-    localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    supportedLocales: const [Locale('en'), Locale('zh')],
+    localizationsDelegates: [
+      ...GlobalMaterialLocalizations.delegates,
+      AppLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
     routes: {
       '/': (_) => SystemScreen(api: widget.api, session: session),
       '/sign-in': (_) => SignInScreen(api: widget.api),
@@ -221,12 +225,12 @@ class _GuardedShellRoute extends StatelessWidget {
         final summary = state.summary;
         if (summary == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Loading')),
+            appBar: AppBar(title: Text(AppLocalizations.of(context)!.loading)),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
         final scaffold = Scaffold(
-          appBar: AppBar(title: const Text('Restricted')),
+          appBar: AppBar(title: Text(AppLocalizations.of(context)!.restricted)),
           body: workspace.AccessDeniedScreen(
             route: _routeNameFor(destination),
             onReturnHome: () =>
@@ -273,13 +277,13 @@ class _GuardedRoute extends StatelessWidget {
         final summary = state.summary;
         if (summary == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Loading')),
+            appBar: AppBar(title: Text(AppLocalizations.of(context)!.loading)),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
         if (!workspace.isRouteAllowedFor(route, summary)) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Restricted')),
+            appBar: AppBar(title: Text(AppLocalizations.of(context)!.restricted)),
             body: workspace.AccessDeniedScreen(
               route: route,
               onReturnHome: () => Navigator.pushNamedAndRemoveUntil(
@@ -377,7 +381,7 @@ class _SystemScreenState extends State<SystemScreen> {
           if (_userSummary != null)
             IconButton(
               icon: const Icon(Icons.logout),
-              tooltip: 'Sign out',
+              tooltip: AppLocalizations.of(context)!.signOutTooltip,
               onPressed: () async {
                 final navigator = Navigator.of(context);
                 await widget.session.signOut();
@@ -397,6 +401,7 @@ class _SystemScreenState extends State<SystemScreen> {
 
   Widget _buildAnonymousHome(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -418,31 +423,31 @@ class _SystemScreenState extends State<SystemScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Welcome to Trippify',
+            l10n.homeAnonymousTitle,
             style: Theme.of(context).textTheme.headlineMedium
                 ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           Text(
-            'Please sign in to access your home screen',
+            l10n.homeAnonymousSubtitle,
             style: Theme.of(context).textTheme.bodyLarge
                 ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: () => Navigator.pushNamed(context, '/sign-in'),
-            child: const Text('Sign in'),
+            child: Text(l10n.homeSignIn),
           ),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: () => Navigator.pushNamed(context, '/register'),
-            child: const Text('Create account'),
+            child: Text(l10n.homeCreateAccount),
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () => Navigator.pushNamed(context, '/discover'),
             icon: const Icon(Icons.explore),
-            label: const Text('Browse the catalog'),
+            label: Text(l10n.homeBrowseCatalog),
           ),
         ],
       ),
@@ -910,17 +915,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   });
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Discover guides')),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+    appBar: AppBar(title: Text(l10n.discoverTitle)),
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
         TextField(
           controller: search,
           decoration: InputDecoration(
-            labelText: 'Search guides',
+            labelText: l10n.discoverSearchLabel,
             suffixIcon: IconButton(
-              tooltip: 'Search',
+              tooltip: l10n.discoverSearchTooltip,
               icon: const Icon(Icons.search),
               onPressed: runSearch,
             ),
@@ -929,11 +936,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         ),
         DropdownButtonFormField<String>(
           initialValue: pricing.isEmpty ? '' : pricing,
-          decoration: const InputDecoration(labelText: 'Pricing'),
-          items: const [
-            DropdownMenuItem(value: '', child: Text('All')),
-            DropdownMenuItem(value: 'free', child: Text('Free')),
-            DropdownMenuItem(value: 'paid', child: Text('Paid')),
+          decoration: InputDecoration(labelText: l10n.discoverPricingLabel),
+          items: [
+            DropdownMenuItem(value: '', child: Text(l10n.discoverPricingAll)),
+            DropdownMenuItem(value: 'free', child: Text(l10n.discoverPricingFree)),
+            DropdownMenuItem(value: 'paid', child: Text(l10n.discoverPricingPaid)),
           ],
           onChanged: (value) {
             pricing = value ?? '';
@@ -950,9 +957,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
               );
             }
             if (snapshot.hasError) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Discovery is unavailable. Try again later.'),
+              return Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(l10n.discoverUnavailable),
               );
             }
             final data = snapshot.data!;
@@ -961,15 +968,15 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No published guides match your search yet.'),
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(l10n.discoverEmpty),
                     ),
                     FilledButton.icon(
                       onPressed: () =>
                           Navigator.pushReplacementNamed(context, '/discover'),
                       icon: const Icon(Icons.explore),
-                      label: const Text('Browse the catalog'),
+                      label: Text(l10n.homeBrowseCatalog),
                     ),
                   ],
                 ),
@@ -1001,6 +1008,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       ],
     ),
   );
+  }
 }
 
 class PublicGuideScreen extends StatefulWidget {
@@ -1140,8 +1148,10 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Guide')),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+    appBar: AppBar(title: Text(l10n.guideTitle)),
     body: FutureBuilder<PublicGuide>(
       future: guide,
       builder: (context, snapshot) {
@@ -1149,7 +1159,7 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('Guide not found.'));
+          return Center(child: Text(l10n.guideNotFound));
         }
         final data = snapshot.data!;
         return workspace.ConstrainedWorkspace(
@@ -1184,7 +1194,7 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
                         AuthorScreen(api: widget.api, slug: data.authorSlug),
                   ),
                 ),
-                child: const Text('View author'),
+                child: Text(l10n.guideViewAuthor),
               ),
               if (data.pricing == 'paid' && !data.unlocked) ...[
                 Semantics(
@@ -1208,16 +1218,16 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
               ] else if (data.pricing == 'paid')
                 Semantics(
                   liveRegion: true,
-                  child: const Text('Purchased. Full guide unlocked.'),
+                  child: Text(l10n.guidePurchased),
                 ),
               if (data.unlocked) ...[
                 FilledButton(
                   onPressed: () => fork(data),
-                  child: const Text('Fork for editing'),
+                  child: Text(l10n.guideForkForEditing),
                 ),
                 OutlinedButton(
                   onPressed: () => saveTrip(data),
-                  child: const Text('Save as a trip'),
+                  child: Text(l10n.guideSaveAsTrip),
                 ),
               ],
               OutlinedButton(
@@ -1279,6 +1289,7 @@ class _PublicGuideScreenState extends State<PublicGuideScreen> {
       },
     ),
   );
+  }
 }
 
 class _GuideChip extends StatelessWidget {
@@ -1499,8 +1510,9 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Self-hosted status')),
+      appBar: AppBar(title: Text(l10n.selfHostedTitle)),
       body: RefreshIndicator(
         onRefresh: () async => _load(),
         child: ListView(
@@ -1514,18 +1526,18 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
               'Applied ${status?.appliedCount ?? 0} · Pending ${status?.pendingCount ?? 0}',
             ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: _upgrade, child: const Text('Run upgrade')),
+            FilledButton(onPressed: _upgrade, child: Text(l10n.selfHostedRunUpgrade)),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: _backup,
-              child: const Text('Capture backup'),
+              child: Text(l10n.selfHostedCaptureBackup),
             ),
             const SizedBox(height: 16),
             sectionTitle(context, 'Feature flags'),
             if (flags.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: Text('No feature flags defined.'),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(l10n.selfHostedNoFlags),
               )
             else
               for (final f in flags)
@@ -4163,8 +4175,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Create account')),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+    appBar: AppBar(title: Text(l10n.registerTitle)),
     body: Form(
       key: _formKey,
       child: ListView(
@@ -4174,11 +4188,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             controller: email,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(labelText: 'Email'),
+            decoration: InputDecoration(labelText: l10n.registerEmail),
             validator: (v) {
               final value = (v ?? '').trim();
-              if (value.isEmpty) return 'Email is required.';
-              if (!_emailRe.hasMatch(value)) return 'Email is invalid.';
+              if (value.isEmpty) return l10n.validationRequired(l10n.registerEmail);
+              if (!_emailRe.hasMatch(value)) return l10n.registerInvalidEmail;
               return null;
             },
           ),
@@ -4186,10 +4200,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             controller: password,
             obscureText: true,
             autofillHints: const [AutofillHints.newPassword],
-            decoration: const InputDecoration(labelText: 'Password'),
+            decoration: InputDecoration(labelText: l10n.registerPassword),
             validator: (v) {
               if ((v ?? '').length < 10) {
-                return 'Password must be at least 10 characters.';
+                return l10n.registerPasswordTooShort;
               }
               return null;
             },
@@ -4197,18 +4211,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           TextFormField(
             controller: passwordConfirm,
             obscureText: true,
-            decoration: const InputDecoration(labelText: 'Confirm Password'),
+            decoration: InputDecoration(labelText: l10n.registerConfirmPassword),
             validator: (v) {
-              if (v != password.text) return 'Passwords do not match.';
+              if (v != password.text) return l10n.registerPasswordsDoNotMatch;
               return null;
             },
           ),
           if (status != null) Semantics(liveRegion: true, child: Text(status!)),
-          FilledButton(onPressed: submit, child: const Text('Create account')),
+          FilledButton(onPressed: submit, child: Text(l10n.registerSubmit)),
         ],
       ),
     ),
   );
+  }
 }
 
 final RegExp _emailRe = RegExp(
@@ -4256,8 +4271,10 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Sign in')),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+    appBar: AppBar(title: Text(l10n.signInTitle)),
     body: Form(
       key: _formKey,
       child: ListView(
@@ -4267,11 +4284,11 @@ class _SignInScreenState extends State<SignInScreen> {
             controller: email,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(labelText: 'Email'),
+            decoration: InputDecoration(labelText: l10n.signInEmail),
             validator: (v) {
               final value = (v ?? '').trim();
-              if (value.isEmpty) return 'Email is required.';
-              if (!_emailRe.hasMatch(value)) return 'Email is invalid.';
+              if (value.isEmpty) return l10n.validationRequired(l10n.signInEmail);
+              if (!_emailRe.hasMatch(value)) return l10n.signInInvalidEmail;
               return null;
             },
           ),
@@ -4279,9 +4296,9 @@ class _SignInScreenState extends State<SignInScreen> {
             controller: password,
             obscureText: true,
             autofillHints: const [AutofillHints.password],
-            decoration: const InputDecoration(labelText: 'Password'),
+            decoration: InputDecoration(labelText: l10n.signInPassword),
             validator: (v) {
-              if ((v ?? '').isEmpty) return 'Password is required.';
+              if ((v ?? '').isEmpty) return l10n.validationRequired(l10n.signInPassword);
               return null;
             },
           ),
@@ -4290,12 +4307,13 @@ class _SignInScreenState extends State<SignInScreen> {
             onPressed: busy ? null : submit,
             child: busy
                 ? const CircularProgressIndicator()
-                : const Text('Sign in'),
+                : Text(l10n.signInSubmit),
           ),
         ],
       ),
     ),
   );
+  }
 }
 
 class ProfileScreen extends StatefulWidget {

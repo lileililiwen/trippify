@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:trippify_flutter/api_client.dart';
+import 'package:trippify_flutter/l10n/generated/app_localizations.dart';
 import 'package:trippify_flutter/main.dart';
 import 'package:trippify_flutter/onboarding/registration_confirmation_screen.dart';
 
 import 'widget_test.dart' show FakeApi;
+
+MaterialApp _wrapWithL10n(Widget child) => MaterialApp(
+  localizationsDelegates: [
+    ...GlobalMaterialLocalizations.delegates,
+    AppLocalizations.delegate,
+  ],
+  supportedLocales: AppLocalizations.supportedLocales,
+  home: child,
+);
 
 void main() {
   testWidgets('AppError maps ApiException status codes', (tester) async {
@@ -25,8 +36,8 @@ void main() {
   });
 
   testWidgets('RegistrationConfirmationScreen renders checklist and resend', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: RegistrationConfirmationScreen(
+    await tester.pumpWidget(_wrapWithL10n(
+      RegistrationConfirmationScreen(
         api: FakeApi(
           Future.value(const SystemDistributionInfo('1.0.0', 0)),
           startLoggedIn: false,
@@ -56,11 +67,8 @@ void main() {
   });
 
   testWidgets('Library empty state renders Browse the catalog CTA', (tester) async {
-    // This test would mount the library route inside the shell. The
-    // existing shell tests cover navigation; here we just verify the
-    // empty-state copy by mounting the LibraryScreen directly.
-    await tester.pumpWidget(MaterialApp(
-      home: LibraryScreen(
+    await tester.pumpWidget(_wrapWithL10n(
+      LibraryScreen(
         api: FakeApi(
           Future.value(const SystemDistributionInfo('1.0.0', 0)),
         ),
@@ -73,9 +81,8 @@ void main() {
   });
 
   testWidgets('Notifications empty state renders Adjust preferences CTA inside shell', (tester) async {
-    // Mount inside the shell to see the CTA wired up.
-    await tester.pumpWidget(MaterialApp(
-      home: NotificationsScreen(
+    await tester.pumpWidget(_wrapWithL10n(
+      NotificationsScreen(
         api: FakeApi(
           Future.value(const SystemDistributionInfo('1.0.0', 0)),
         ),
@@ -90,8 +97,8 @@ void main() {
       Future.value(const SystemDistributionInfo('1.0.0', 0)),
       routeError: const ApiException(404, 'Not found'),
     );
-    await tester.pumpWidget(MaterialApp(
-      home: PublicGuideScreen(api: api, slug: 'missing'),
+    await tester.pumpWidget(_wrapWithL10n(
+      PublicGuideScreen(api: api, slug: 'missing'),
     ));
     await tester.pumpAndSettle();
     // The screen renders the message; copy may include a 'no longer

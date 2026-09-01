@@ -1,0 +1,368 @@
+{
+  "@@locale": "en",
+  "appTitle": "Trippify",
+  "loading": "Loading",
+  "restricted": "Restricted",
+
+  "homeAnonymousTitle": "Welcome to Trippify",
+  "homeAnonymousSubtitle": "Please sign in to access your home screen",
+  "homeSignIn": "Sign in",
+  "homeCreateAccount": "Create account",
+  "homeBrowseCatalog": "Browse the catalog",
+
+  "homeGreeting": "Welcome back, {name}.",
+  "@homeGreeting": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "accountSummaryTitle": "Account summary",
+  "accountEmail": "Email",
+  "accountRoles": "Roles",
+  "accountStatus": "Status",
+  "accountCreator": "Creator",
+  "accountRolesNone": "None",
+  "accountCreatorYes": "Yes",
+  "accountCreatorNo": "No",
+  "verifyEmailTitle": "Verify your email",
+  "verifyEmailBody": "Confirm {email} to unlock purchases, forks, and creator tools.",
+  "@verifyEmailBody": {
+    "placeholders": {
+      "email": { "type": "String" }
+    }
+  },
+  "verifyEmailSending": "Sending…",
+  "verifyEmailResend": "Resend",
+
+  "signOutTooltip": "Sign out",
+  "accessDeniedTitle": "Access denied",
+  "accessDeniedBody": "Your account does not have permission to open {route}. Return to your workspace or sign in with a different account.",
+  "@accessDeniedBody": {
+    "placeholders": {
+      "route": { "type": "String" }
+    }
+  },
+  "accessDeniedReturn": "Back to workspace",
+
+  "sectionCreatorWorkspace": "Creator workspace",
+  "sectionGetStarted": "Get started",
+  "sectionDiscoverPlan": "Discover & plan",
+  "sectionAdministration": "Administration",
+  "sectionTenant": "Tenant",
+  "sectionAccount": "Account",
+
+  "entryCreatorDashboard": "Creator dashboard",
+  "entryCreatorDashboardDesc": "Sales, reviews, and revenue summary.",
+  "entryMyGuides": "My guides",
+  "entryMyGuidesDesc": "Authoring, planning, and releases.",
+  "entryPlanRoutes": "Plan routes & budget",
+  "entryPlanRoutesDesc": "Day-by-day routes, budget lines, and party totals.",
+  "entryLicensePolicies": "License policies",
+  "entryLicensePoliciesDesc": "Commercial and remix defaults.",
+  "entryBecomeCreator": "Become a creator",
+  "entryBecomeCreatorDesc": "Submit a slug and bio to publish your own guides.",
+  "entryDiscoverGuides": "Discover guides",
+  "entryDiscoverGuidesDesc": "Browse the public catalog and curated trips.",
+  "entryMyLibrary": "My library",
+  "entryMyLibraryDesc": "Purchased guides, forks, and saved trips.",
+  "entryAdminOperations": "Admin operations",
+  "entryAdminOperationsDesc": "Audit log, users, creators, and evidence review.",
+  "entryMyTenant": "My tenant",
+  "entryMyTenantDesc": "Plan, quotas, and exports for your deployment.",
+  "entryAssistedImport": "Assisted import",
+  "entryAssistedImportDesc": "Convert sources into AI-assisted drafts.",
+  "entryMyProfile": "My profile",
+  "entryMyProfileDesc": "Display name, avatar, and locale preferences.",
+  "entryNotifications": "Notifications",
+  "entryNotificationsDesc": "Replies, remix decisions, and reviewer updates.",
+  "entryNotificationPreferences": "Notification preferences",
+  "entryNotificationPreferencesDesc": "Choose how the service reaches you.",
+
+  "destinationHome": "Home",
+  "destinationDiscover": "Discover",
+  "destinationLibrary": "Library",
+  "destinationPlan": "Plan",
+  "destinationCreate": "Create",
+
+  "signInEmail": "Email",
+  "signInPassword": "Password",
+  "signInSubmit": "Sign in",
+  "signInCreateAccount": "Create account",
+  "signInInvalidEmail": "Enter a valid email address",
+  "signInMissingEmail": "Email is required",
+  "signInMissingPassword": "Password is required",
+  "signInTitle": "Sign in",
+  "signInFailure": "Email or password is incorrect, or the account has not been confirmed.",
+
+  "registerTitle": "Create account",
+  "registerEmail": "Email",
+  "registerPassword": "Password",
+  "registerConfirmPassword": "Confirm password",
+  "registerSubmit": "Create account",
+  "registerInvalidEmail": "Enter a valid email address",
+  "registerPasswordsDoNotMatch": "Passwords do not match",
+  "registerPasswordTooShort": "Password must be at least 10 characters",
+  "registerPasswordRequiresMixed": "Use letters, numbers, or symbols",
+  "registerPasswordRequiresLetterAndNumber": "Include at least one letter and one number",
+  "registerPasswordRequiresSymbol": "Include at least one symbol",
+  "registerSuccessTitle": "Confirm your email",
+  "registerSuccessBodyNoEmail": "We sent a confirmation link to your email.",
+  "registerSuccessBodyWithEmail": "We sent a confirmation link to {email}.",
+  "@registerSuccessBodyWithEmail": {
+    "placeholders": {
+      "email": { "type": "String" }
+    }
+  },
+  "registerChecklistInbox": "Open your inbox and look for the Trippify email.",
+  "registerChecklistSpam": "If it is not there, check your spam or junk folder.",
+  "registerChecklistClickLink": "Click the link in the email to activate your account.",
+  "registerResend": "Resend verification",
+  "registerResentSuccess": "Verification email re-sent. Check your inbox in a few minutes.",
+  "registerResentFailure": "Resend is unavailable right now. Please try later.",
+  "registerBackToSignIn": "Back to sign in",
+
+  "discoverTitle": "Discover guides",
+  "discoverSearchLabel": "Search guides",
+  "discoverSearchTooltip": "Search",
+  "discoverPricingLabel": "Pricing",
+  "discoverPricingAll": "All",
+  "discoverPricingFree": "Free",
+  "discoverPricingPaid": "Paid",
+  "discoverUnavailable": "Discovery is unavailable. Try again later.",
+  "discoverEmpty": "No published guides match your search yet.",
+
+  "libraryTitle": "My library",
+  "libraryUnavailable": "Guide access denied or unavailable.",
+
+  "guidesTitle": "My guides",
+  "guidesUnavailable": "Guide access denied or unavailable.",
+  "guidesEmpty": "No guides yet. Create your first structured itinerary.",
+  "guidesCreateDraft": "Create draft",
+  "guidesSaveItinerary": "Save itinerary",
+  "guidesStatusDraftCreated": "Draft created.",
+  "guidesStatusSaved": "Guide saved.",
+  "guidesStatusConflict": "Guide changed elsewhere. Reload before saving.",
+  "guidesTitleLabel": "Guide title",
+  "guidesCountryLabel": "Country code",
+  "guidesEditingTitle": "Editing {title}",
+  "@guidesEditingTitle": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "guidesMoveDayUpTooltip": "Move day up",
+
+  "planningTitle": "Plan routes & budget",
+  "planningUnavailable": "Planning access denied or unavailable.",
+  "planningEmpty": "No guides yet. Create a structured itinerary to plan routes.",
+  "planningGuideLabel": "Guide",
+  "planningDayLabel": "Day",
+  "planningDay": "Day {day}",
+  "@planningDay": {
+    "placeholders": {
+      "day": { "type": "int" }
+    }
+  },
+  "planningPartySizeLabel": "Party size",
+  "planningDecreasePartySize": "Fewer travelers",
+  "planningIncreasePartySize": "More travelers",
+  "planningNoMarkers": "No markers yet. Add places to this day.",
+  "planningNoCoordinates": "No coordinates",
+  "planningUnresolvedLocation": "Provider could not resolve this location.",
+  "planningGeocodeAttribution": "Geocode attribution",
+  "planningNoBudgetEntries": "No budget entries yet.",
+  "planningBudgetPerPerson": "{amount} {currency} per person",
+  "@planningBudgetPerPerson": {
+    "placeholders": {
+      "amount": { "type": "String" },
+      "currency": { "type": "String" }
+    }
+  },
+  "planningBudgetPartyTotal": "{amount} {currency}",
+  "@planningBudgetPartyTotal": {
+    "placeholders": {
+      "amount": { "type": "String" },
+      "currency": { "type": "String" }
+    }
+  },
+  "planningSegmentRoute": "{origin} → {destination}",
+  "@planningSegmentRoute": {
+    "placeholders": {
+      "origin": { "type": "String" },
+      "destination": { "type": "String" }
+    }
+  },
+  "planningSegmentMeta": "{mode} · {minutes} min",
+  "@planningSegmentMeta": {
+    "placeholders": {
+      "mode": { "type": "String" },
+      "minutes": { "type": "int" }
+    }
+  },
+  "planningMarkerCoords": "{lat}, {lng}",
+  "@planningMarkerCoords": {
+    "placeholders": {
+      "lat": { "type": "String" },
+      "lng": { "type": "String" }
+    }
+  },
+
+  "guideTitle": "Guide",
+  "guideNotFound": "Guide not found.",
+  "guideViewAuthor": "View author",
+  "guidePurchased": "Purchased. Full guide unlocked.",
+  "guideForkForEditing": "Fork for editing",
+  "guideSaveAsTrip": "Save as a trip",
+  "guideCheckoutFailed": "Checkout failed. Retry to resume.",
+  "guideFavoritesRemoved": "Removed from favorites.",
+  "guideFavoritesAdded": "Added to favorites.",
+  "guideFavoritesUnavailable": "Favorites are unavailable.",
+  "guideCannotFork": "Cannot fork this guide right now.",
+  "guideSavedAsTrip": "Saved as a trip. Manage it from My library.",
+  "guideCannotSaveTrip": "Cannot save this guide as a trip.",
+
+  "retry": "Retry",
+  "providerUnavailable": "Provider is not configured for this environment.",
+  "providerDenied": "You do not have access to this provider.",
+  "providerOffline": "Provider is unreachable. Check your connection and retry.",
+  "mapNoCoordinates": "No coordinates yet. Add places with an address.",
+  "mapUnresolvedCount": "{count, plural, =1{1 location could not be resolved.} other{{count} locations could not be resolved.}}",
+  "@mapUnresolvedCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "mapUnresolved": "Unresolved location",
+  "mapAccessDenied": "Map access denied for this guide.",
+  "mapOffline": "Map provider is unreachable. Check your connection and retry.",
+
+  "reviewsRatingLabel": "Rating: {rating} of {max}",
+  "@reviewsRatingLabel": {
+    "placeholders": {
+      "rating": { "type": "int" },
+      "max": { "type": "int" }
+    }
+  },
+  "reviewsSubmit": "Submit review",
+  "reviewsUnavailable": "Reviews are unavailable.",
+  "reviewsNone": "No reviews yet.",
+  "reviewsReply": "Author reply: {body}",
+  "@reviewsReply": {
+    "placeholders": {
+      "body": { "type": "String" }
+    }
+  },
+  "reviewHelperBody": "30–4000 characters",
+  "reviewBodyLabel": "Review body",
+  "reviewRatingLabel": "Rating",
+  "reviewBodyRequired": "Add a review body before submitting.",
+  "reviewRatingRequired": "Choose a rating before submitting.",
+
+  "menuLoad": "Load",
+  "menuNotifications": "Notifications",
+  "menuPlugins": "Plugins",
+  "menuSystemStatus": "System status",
+  "menuReturnHome": "Return to home",
+  "menuCancel": "Cancel",
+  "menuClose": "Close",
+  "menuSend": "Send",
+
+  "creatorDashboardTitle": "Creator dashboard",
+  "creatorDashboardUnavailable": "Creator dashboard is unavailable.",
+  "creatorDashboardNoRevenue": "No revenue yet.",
+  "creatorDashboardReviewSummaryUnavailable": "Review summary unavailable.",
+  "creatorDashboardOrdersUnavailable": "Order list is unavailable.",
+  "creatorDashboardNoOrders": "No orders yet.",
+  "creatorDashboardSignedDownloadTitle": "Signed download",
+  "creatorDashboardAmount": "{amount}",
+  "@creatorDashboardAmount": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+
+  "adminOperationsTitle": "Admin operations",
+  "adminOperationsAuditUnavailable": "Audit log unavailable.",
+  "adminOperationsNoAudit": "No audit entries yet.",
+  "adminOperationsUsersUnavailable": "Users list unavailable.",
+  "adminOperationsNoUsers": "No users found.",
+  "adminOperationsCreatorsUnavailable": "Creators list unavailable.",
+  "adminOperationsNoCreators": "No creators yet.",
+  "adminOperationsLoadAttachments": "Load attachments",
+  "adminOperationsNoAttachments": "No attachments loaded.",
+  "adminOperationsDownload": "Download",
+
+  "assistedImportTitle": "Assisted import",
+  "assistedImportSubmitText": "Submit text import",
+  "assistedImportSubmitObject": "Submit object import",
+  "assistedImportApprove": "Approve",
+  "assistedImportReject": "Reject",
+  "assistedImportTranslateEs": "Translate (es)",
+
+  "pluginsTitle": "Plugin catalog",
+  "pluginsInstallationsUnavailable": "Installations unavailable.",
+  "pluginsNoInstallations": "No installations yet.",
+  "pluginsRemove": "Remove",
+  "pluginsCatalogUnavailable": "Catalog unavailable.",
+  "pluginsNoPlugins": "No plugins available yet.",
+  "pluginsInstall": "Install",
+
+  "licensePanelTitle": "License policies",
+  "licensePanelNone": "No license policies yet.",
+  "licensePanelCreateDefault": "Create default license",
+
+  "tenantTitle": "My tenant",
+  "tenantPlan": "Plan {plan} ({status})",
+  "@tenantPlan": {
+    "placeholders": {
+      "plan": { "type": "String" },
+      "status": { "type": "String" }
+    }
+  },
+  "tenantNoQuotas": "No quotas defined yet.",
+  "tenantQuotaUsage": "Used {used} / Limit {limit}",
+  "@tenantQuotaUsage": {
+    "placeholders": {
+      "used": { "type": "String" },
+      "limit": { "type": "String" }
+    }
+  },
+  "tenantGenerateExport": "Generate export",
+
+  "selfHostedTitle": "Self-hosted status",
+  "selfHostedRunUpgrade": "Run upgrade",
+  "selfHostedCaptureBackup": "Capture backup",
+  "selfHostedNoFlags": "No feature flags defined.",
+  "selfHostedFlagEnabled": "Enabled {state}",
+  "@selfHostedFlagEnabled": {
+    "placeholders": {
+      "state": { "type": "String" }
+    }
+  },
+
+  "releaseHistoryUnavailable": "Release history unavailable.",
+  "releaseNoReleases": "No releases yet.",
+  "releaseVersion": "v{version}",
+  "@releaseVersion": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+
+  "signInShellSignedInDestination": "Signed in",
+  "signInShellLoading": "Loading",
+
+  "validationEmailInvalid": "Enter a valid email address",
+  "validationRequired": "{field} is required",
+  "@validationRequired": {
+    "placeholders": {
+      "field": { "type": "String" }
+    }
+  },
+  "validationMinLength": "Use at least {min} characters",
+  "@validationMinLength": {
+    "placeholders": {
+      "min": { "type": "int" }
+    }
+  }
+}

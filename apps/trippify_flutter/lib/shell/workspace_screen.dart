@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
+import '../l10n/generated/app_localizations.dart';
 
 /// Maximum content width for wide screens (web layout). Keeps long forms and
 /// tile rows readable on a desktop browser while letting mobile layouts
@@ -38,51 +39,54 @@ class WorkspaceSection {
 /// The result is a list of sections that the home surface renders in
 /// order. Roles that the user does not have are omitted entirely; the
 /// server remains authoritative for the actual route handlers.
-List<WorkspaceSection> workspaceSectionsFor(MySummary summary) {
+List<WorkspaceSection> workspaceSectionsFor(
+  MySummary summary, {
+  required AppLocalizations l10n,
+}) {
   final sections = <WorkspaceSection>[];
 
   if (summary.isCreator) {
     sections.add(
-      const WorkspaceSection(
-        title: 'Creator workspace',
+      WorkspaceSection(
+        title: l10n.sectionCreatorWorkspace,
         entries: [
           WorkspaceEntry(
-            label: 'Creator dashboard',
+            label: l10n.entryCreatorDashboard,
             icon: Icons.dashboard_outlined,
             route: '/creator/dashboard',
-            description: 'Sales, reviews, and revenue summary.',
+            description: l10n.entryCreatorDashboardDesc,
           ),
           WorkspaceEntry(
-            label: 'My guides',
+            label: l10n.entryMyGuides,
             icon: Icons.menu_book_outlined,
             route: '/guides',
-            description: 'Authoring, planning, and releases.',
+            description: l10n.entryMyGuidesDesc,
           ),
           WorkspaceEntry(
-            label: 'Plan routes & budget',
+            label: l10n.entryPlanRoutes,
             icon: Icons.map_outlined,
             route: '/planning',
-            description: 'Day-by-day routes, budget lines, and party totals.',
+            description: l10n.entryPlanRoutesDesc,
           ),
           WorkspaceEntry(
-            label: 'License policies',
+            label: l10n.entryLicensePolicies,
             icon: Icons.gavel_outlined,
             route: '/license-panel',
-            description: 'Commercial and remix defaults.',
+            description: l10n.entryLicensePoliciesDesc,
           ),
         ],
       ),
     );
   } else {
     sections.add(
-      const WorkspaceSection(
-        title: 'Get started',
+      WorkspaceSection(
+        title: l10n.sectionGetStarted,
         entries: [
           WorkspaceEntry(
-            label: 'Become a creator',
+            label: l10n.entryBecomeCreator,
             icon: Icons.edit_outlined,
             route: '/creator/enroll',
-            description: 'Submit a slug and bio to publish your own guides.',
+            description: l10n.entryBecomeCreatorDesc,
           ),
         ],
       ),
@@ -90,20 +94,20 @@ List<WorkspaceSection> workspaceSectionsFor(MySummary summary) {
   }
 
   sections.add(
-    const WorkspaceSection(
-      title: 'Discover & plan',
+    WorkspaceSection(
+      title: l10n.sectionDiscoverPlan,
       entries: [
         WorkspaceEntry(
-          label: 'Discover guides',
+          label: l10n.entryDiscoverGuides,
           icon: Icons.explore_outlined,
           route: '/discover',
-          description: 'Browse the public catalog and curated trips.',
+          description: l10n.entryDiscoverGuidesDesc,
         ),
         WorkspaceEntry(
-          label: 'My library',
+          label: l10n.entryMyLibrary,
           icon: Icons.collections_bookmark_outlined,
           route: '/library',
-          description: 'Purchased guides, forks, and saved trips.',
+          description: l10n.entryMyLibraryDesc,
         ),
       ],
     ),
@@ -111,14 +115,14 @@ List<WorkspaceSection> workspaceSectionsFor(MySummary summary) {
 
   if (summary.isAdministrator) {
     sections.add(
-      const WorkspaceSection(
-        title: 'Administration',
+      WorkspaceSection(
+        title: l10n.sectionAdministration,
         entries: [
           WorkspaceEntry(
-            label: 'Admin operations',
+            label: l10n.entryAdminOperations,
             icon: Icons.admin_panel_settings_outlined,
             route: '/admin/operations',
-            description: 'Audit log, users, creators, and evidence review.',
+            description: l10n.entryAdminOperationsDesc,
           ),
         ],
       ),
@@ -127,20 +131,20 @@ List<WorkspaceSection> workspaceSectionsFor(MySummary summary) {
 
   if (summary.isTenant) {
     sections.add(
-      const WorkspaceSection(
-        title: 'Tenant',
+      WorkspaceSection(
+        title: l10n.sectionTenant,
         entries: [
           WorkspaceEntry(
-            label: 'My tenant',
+            label: l10n.entryMyTenant,
             icon: Icons.business_outlined,
             route: '/tenant',
-            description: 'Plan, quotas, and exports for your deployment.',
+            description: l10n.entryMyTenantDesc,
           ),
           WorkspaceEntry(
-            label: 'Assisted import',
+            label: l10n.entryAssistedImport,
             icon: Icons.cloud_download_outlined,
             route: '/assisted-import',
-            description: 'Convert sources into AI-assisted drafts.',
+            description: l10n.entryAssistedImportDesc,
           ),
         ],
       ),
@@ -148,26 +152,26 @@ List<WorkspaceSection> workspaceSectionsFor(MySummary summary) {
   }
 
   sections.add(
-    const WorkspaceSection(
-      title: 'Account',
+    WorkspaceSection(
+      title: l10n.sectionAccount,
       entries: [
         WorkspaceEntry(
-          label: 'My profile',
+          label: l10n.entryMyProfile,
           icon: Icons.person_outline,
           route: '/profile',
-          description: 'Display name, avatar, and locale preferences.',
+          description: l10n.entryMyProfileDesc,
         ),
         WorkspaceEntry(
-          label: 'Notifications',
+          label: l10n.entryNotifications,
           icon: Icons.notifications_outlined,
           route: '/notifications',
-          description: 'Replies, remix decisions, and reviewer updates.',
+          description: l10n.entryNotificationsDesc,
         ),
         WorkspaceEntry(
-          label: 'Notification preferences',
+          label: l10n.entryNotificationPreferences,
           icon: Icons.tune_outlined,
           route: '/notification-preferences',
-          description: 'Choose how the service reaches you.',
+          description: l10n.entryNotificationPreferencesDesc,
         ),
       ],
     ),
@@ -246,7 +250,8 @@ class WorkspaceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sections = workspaceSectionsFor(summary);
+    final l10n = AppLocalizations.of(context)!;
+    final sections = workspaceSectionsFor(summary, l10n: l10n);
     final greeting = _greetingName();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -254,7 +259,7 @@ class WorkspaceScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Welcome back, $greeting.',
+            l10n.homeGreeting(greeting),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
@@ -290,6 +295,7 @@ class _AccountSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Card(
@@ -298,20 +304,20 @@ class _AccountSummaryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Account summary', style: theme.textTheme.titleMedium),
+            Text(l10n.accountSummaryTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            _SummaryRow(label: 'Email', value: summary.email),
+            _SummaryRow(label: l10n.accountEmail, value: summary.email),
             const SizedBox(height: 6),
             _SummaryRow(
-              label: 'Roles',
-              value: summary.roles.isEmpty ? 'None' : summary.roles.join(', '),
+              label: l10n.accountRoles,
+              value: summary.roles.isEmpty ? l10n.accountRolesNone : summary.roles.join(', '),
             ),
             const SizedBox(height: 6),
-            _SummaryRow(label: 'Status', value: summary.accountStatus),
+            _SummaryRow(label: l10n.accountStatus, value: summary.accountStatus),
             const SizedBox(height: 6),
             _SummaryRow(
-              label: 'Creator',
-              value: summary.isCreator ? 'Yes' : 'No',
+              label: l10n.accountCreator,
+              value: summary.isCreator ? l10n.accountCreatorYes : l10n.accountCreatorNo,
               accent: summary.isCreator ? colorScheme.primary : null,
             ),
           ],
@@ -362,6 +368,7 @@ class _UnverifiedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
@@ -379,12 +386,12 @@ class _UnverifiedBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Verify your email',
+                  l10n.verifyEmailTitle,
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Confirm $email to unlock purchases, forks, and creator tools.',
+                  l10n.verifyEmailBody(email),
                 ),
                 const SizedBox(height: 8),
                 TextButton.icon(
@@ -396,7 +403,7 @@ class _UnverifiedBanner extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh),
-                  label: Text(busy ? 'Sending…' : 'Resend'),
+                  label: Text(busy ? l10n.verifyEmailSending : l10n.verifyEmailResend),
                 ),
               ],
             ),
@@ -496,6 +503,7 @@ class AccessDeniedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
@@ -512,21 +520,20 @@ class AccessDeniedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Access denied',
+                l10n.accessDeniedTitle,
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'Your account does not have permission to open $route. '
-                'Return to your workspace or sign in with a different account.',
+                l10n.accessDeniedBody(route),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: onReturnHome,
                 icon: const Icon(Icons.home_outlined),
-                label: const Text('Back to workspace'),
+                label: Text(l10n.accessDeniedReturn),
               ),
             ],
           ),

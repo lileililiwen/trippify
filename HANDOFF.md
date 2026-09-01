@@ -2,9 +2,9 @@
 
 ## Next spec
 
-`complete-flutter-localization-and-accessibility`
+`add-rendered-browser-and-release-quality-gates`
 
-Path: `openspec/changes/complete-flutter-localization-and-accessibility/`
+Path: `openspec/changes/add-rendered-browser-and-release-quality-gates/`
 
 Status: planned and strictly validated; implementation has not started.
 
@@ -12,6 +12,7 @@ Status: planned and strictly validated; implementation has not started.
 
 These audit changes have been merged into `openspec/specs/` and committed:
 
+- `complete-flutter-localization-and-accessibility` (in this branch, awaiting commit)
 - `complete-flutter-workspace-ux` (in this branch, awaiting commit)
 - `align-flutter-api-methods-and-error-states` (commit `a5813da`)
 - `fail-closed-evidence-malware-scanning` (commit `40ff68e`)
@@ -21,15 +22,14 @@ These audit changes have been merged into `openspec/specs/` and committed:
 - `wire-production-provider-credentials` (commit `77555e6`)
 
 The next unstarted audit change after
-`complete-flutter-localization-and-accessibility` is
-`add-rendered-browser-and-release-quality-gates`.
+`add-rendered-browser-and-release-quality-gates` is
+`complete-flutter-localization-and-accessibility` is now shipped.
 
 ## Objective
 
-Tighten the API surface that receives and validates CORS, runtime secrets,
-and credentialed requests so production deploys cannot be tricked by
-permissive defaults, weak signing secrets, or misconfigured allowed
-origins. Keep the self-hosted and Development flows usable.
+Add browser workflow evidence, skip accountability, PostgreSQL upgrade,
+provider outage, and backup/restore release gates to the rendered Flutter
+web workflows and release quality gates.
 
 ## Implementation workflow
 

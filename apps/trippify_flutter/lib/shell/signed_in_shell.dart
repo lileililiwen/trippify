@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../session_controller.dart';
 
 /// Signed-in app shell. Renders a [Scaffold] with a [NavigationBar] that
@@ -118,50 +119,51 @@ class _SignedInShellState extends State<SignedInShell> {
       return Scaffold(body: widget.child ?? const SizedBox.shrink());
     }
 
+    final l10n = AppLocalizations.of(context);
     final isCreator = _summary?.isCreator ?? false;
     final destinations =
         <({SignedInDestination destination, NavigationDestination navigation})>[
           (
             destination: SignedInDestination.home,
-            navigation: const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'Home',
+            navigation: NavigationDestination(
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: const Icon(Icons.home),
+              label: l10n?.destinationHome ?? 'Home',
             ),
           ),
           (
             destination: SignedInDestination.discover,
-            navigation: const NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore),
-              label: 'Discover',
+            navigation: NavigationDestination(
+              icon: const Icon(Icons.explore_outlined),
+              selectedIcon: const Icon(Icons.explore),
+              label: l10n?.destinationDiscover ?? 'Discover',
             ),
           ),
           (
             destination: SignedInDestination.library,
-            navigation: const NavigationDestination(
-              icon: Icon(Icons.collections_bookmark_outlined),
-              selectedIcon: Icon(Icons.collections_bookmark),
-              label: 'Library',
+            navigation: NavigationDestination(
+              icon: const Icon(Icons.collections_bookmark_outlined),
+              selectedIcon: const Icon(Icons.collections_bookmark),
+              label: l10n?.destinationLibrary ?? 'Library',
             ),
           ),
         ];
     if (isCreator) {
       destinations.add((
         destination: SignedInDestination.create,
-        navigation: const NavigationDestination(
-          icon: Icon(Icons.edit_outlined),
-          selectedIcon: Icon(Icons.edit),
-          label: 'Create',
+        navigation: NavigationDestination(
+          icon: const Icon(Icons.edit_outlined),
+          selectedIcon: const Icon(Icons.edit),
+          label: l10n?.destinationCreate ?? 'Create',
         ),
       ));
     } else {
       destinations.add((
         destination: SignedInDestination.plan,
-        navigation: const NavigationDestination(
-          icon: Icon(Icons.map_outlined),
-          selectedIcon: Icon(Icons.map),
-          label: 'Plan',
+        navigation: NavigationDestination(
+          icon: const Icon(Icons.map_outlined),
+          selectedIcon: const Icon(Icons.map),
+          label: l10n?.destinationPlan ?? 'Plan',
         ),
       ));
     }

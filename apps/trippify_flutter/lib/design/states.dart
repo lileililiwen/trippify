@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/generated/app_localizations.dart';
+
 /// Centered spinner used by every screen while its future is pending.
 class LoadingState extends StatelessWidget {
   const LoadingState({super.key, this.padding = const EdgeInsets.all(24)});
@@ -24,6 +26,7 @@ class ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -39,7 +42,7 @@ class ErrorState extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: 16),
-              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+              FilledButton(onPressed: onRetry, child: Text(l10n?.retry ?? 'Retry')),
             ],
           ],
         ),
@@ -116,6 +119,8 @@ class ProviderStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final retryLabel = l10n?.retry ?? 'Retry';
     switch (status) {
       case ProviderStatus.loading:
         return const LoadingState();
@@ -125,7 +130,7 @@ class ProviderStateView extends StatelessWidget {
         return EmptyState(
           message: unavailableMessage,
           icon: Icons.cloud_off_outlined,
-          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: Text(retryLabel)),
         );
       case ProviderStatus.denied:
         return EmptyState(message: deniedMessage, icon: Icons.lock_outline);
@@ -133,7 +138,7 @@ class ProviderStateView extends StatelessWidget {
         return EmptyState(
           message: offlineMessage,
           icon: Icons.wifi_off_outlined,
-          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: Text(retryLabel)),
         );
     }
   }

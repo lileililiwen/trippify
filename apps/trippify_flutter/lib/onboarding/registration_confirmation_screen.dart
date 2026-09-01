@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
+import '../l10n/generated/app_localizations.dart';
 
 /// Confirmation screen shown after a successful registration. Lists the
 /// next steps (check inbox, check spam, request resend) and surfaces a
@@ -27,21 +28,23 @@ class _RegistrationConfirmationScreenState extends State<RegistrationConfirmatio
       await widget.api.resendVerification();
       if (!mounted) return;
       setState(() {
-        status = 'Verification email re-sent. Check your inbox in a few minutes.';
+        status = 'resendSuccess';
         busy = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        status = 'Resend is unavailable right now. Please try later.';
+        status = 'resendFailure';
         busy = false;
       });
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Confirm your email')),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+    appBar: AppBar(title: Text(l10n.registerSuccessTitle)),
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -53,22 +56,29 @@ class _RegistrationConfirmationScreenState extends State<RegistrationConfirmatio
         const SizedBox(height: 16),
         Text(
           widget.email == null
-              ? 'We sent a confirmation link to your email.'
-              : 'We sent a confirmation link to ${widget.email}.',
+              ? l10n.registerSuccessBodyNoEmail
+              : l10n.registerSuccessBodyWithEmail(widget.email!),
           style: Theme.of(context).textTheme.titleMedium,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
-        _checklistItem(context, 'Open your inbox and look for the Trippify email.'),
-        _checklistItem(context, 'If it is not there, check your spam or junk folder.'),
-        _checklistItem(context, 'Click the link in the email to activate your account.'),
+        _checklistItem(context, l10n.registerChecklistInbox),
+        _checklistItem(context, l10n.registerChecklistSpam),
+        _checklistItem(context, l10n.registerChecklistClickLink),
         const SizedBox(height: 16),
         if (status != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Semantics(
               liveRegion: true,
-              child: Text(status!, textAlign: TextAlign.center),
+              child: Text(
+                status == 'resendSuccess'
+                    ? l10n.registerResentSuccess
+                    : status == 'resendFailure'
+                        ? l10n.registerResentFailure
+                        : status!,
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         FilledButton(
@@ -79,7 +89,7 @@ class _RegistrationConfirmationScreenState extends State<RegistrationConfirmatio
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Resend verification'),
+              : Text(l10n.registerResend),
         ),
         const SizedBox(height: 12),
         OutlinedButton(
@@ -89,11 +99,12 @@ class _RegistrationConfirmationScreenState extends State<RegistrationConfirmatio
                   Navigator.popUntil(context, (r) => r.isFirst);
                   Navigator.pushReplacementNamed(context, '/sign-in');
                 },
-          child: const Text('Back to sign in'),
+          child: Text(l10n.registerBackToSignIn),
         ),
       ],
     ),
   );
+  }
 
   Widget _checklistItem(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),

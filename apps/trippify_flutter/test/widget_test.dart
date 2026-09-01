@@ -1928,8 +1928,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pump();
-    expect(find.text('Email is required.'), findsOneWidget);
-    expect(find.text('Password is required.'), findsOneWidget);
+    expect(find.text('Email is required'), findsOneWidget);
+    expect(find.text('Password is required'), findsOneWidget);
   });
 
   testWidgets('sign-in form rejects malformed email with inline errorText', (
@@ -1950,7 +1950,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'somepassword');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pump();
-    expect(find.text('Email is invalid.'), findsOneWidget);
+    expect(find.text('Enter a valid email address'), findsOneWidget);
   });
 
   testWidgets(
@@ -1976,7 +1976,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
       await tester.pump();
       expect(
-        find.text('Password must be at least 10 characters.'),
+        find.text('Password must be at least 10 characters'),
         findsOneWidget,
       );
     },
