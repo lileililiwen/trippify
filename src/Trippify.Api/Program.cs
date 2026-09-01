@@ -38,6 +38,7 @@ builder.Services.AddSingleton(sp =>
         options.PublicBaseUrl = configuration["ObjectStorage:PublicBaseUrl"] ?? $"local://trippify/{options.Provider}";
     if (string.IsNullOrWhiteSpace(options.SignedUrlHost))
         options.SignedUrlHost = configuration["ObjectStorage:SignedUrlHost"] ?? string.Empty;
+    options.Validate();
     return options;
 });
 builder.Services.AddSingleton(sp => MapProviderOptions.Bind(sp.GetRequiredService<IConfiguration>()));

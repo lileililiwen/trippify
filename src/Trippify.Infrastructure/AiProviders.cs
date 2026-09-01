@@ -94,7 +94,7 @@ public sealed class HttpAiAssistant : IAiAssistant
                 {
                     Content = new StringContent(JsonSerializer.Serialize(BuildRequestBody(request)), Encoding.UTF8, "application/json"),
                 };
-                payload.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "REDACTED");
+                payload.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
                 using var response = await _http.SendAsync(payload, HttpCompletionOption.ResponseContentRead, timeoutCts.Token);
                 if (response.StatusCode == HttpStatusCode.RequestTimeout || response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
                 {

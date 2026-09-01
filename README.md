@@ -94,7 +94,15 @@ Never enable or reuse these credentials in a deployed environment.
 
 ## Deployment notes
 
-Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, and any other provider secrets through your secret store. Never commit secrets.
+Swagger lives at `/swagger`; liveness at `/health/live` and readiness at `/health/ready`. Set `ASPNETCORE_ENVIRONMENT=Production` and inject `ConnectionStrings__Postgres`, payment provider keys, AI provider keys, and remote object-storage credentials through your secret store. Never commit secrets.
+
+For the production payment adapter set `Payment__Provider=http` and supply `Payment__Endpoint`, `Payment__ApiKey`, and `Payment__WebhookSecret`. The same values are bound to the documented `Payment:*` keys under the `Payment` section. The configured API key is sent on every checkout request as `Authorization: Bearer …`; missing values fail startup with a `ProviderConfigurationException`.
+
+For the production AI adapter set `Ai__Provider=http` and supply `Ai__Endpoint`, `Ai__ApiKey`, and `Ai__Model`. The configured key is sent on every `POST /v1/ai/assist` request; missing values fail startup.
+
+For the production object-storage adapter set `ObjectStorage__Provider=s3-compatible` and supply `ObjectStorage__Endpoint`, `ObjectStorage__Bucket`, `ObjectStorage__AccessKey`, and `ObjectStorage__SecretKey`. The access key is sent as the bearer credential on every `PUT/DELETE/HEAD` request. Missing values fail startup.
+
+Local and self-hosted deployments keep `Payment__Provider=local` and `Ai__Provider=local` (and `ObjectStorage__Provider=local`) to retain the existing disabled behaviour without exposing the production path.
 
 To deliver real confirmation and password-reset emails, set `RESEND_API_KEY` (see [`docs/identity.md`](docs/identity.md) for the full contract). Without the key, the API silently no-ops email sends — registration still succeeds, but the user never receives the message.
 

@@ -91,7 +91,7 @@ public sealed class HttpPaymentGateway : IPaymentGateway, IPaymentWebhookVerifie
         {
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
         };
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "REDACTED");
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
         httpRequest.Headers.Add("Idempotency-Key", request.IdempotencyKey);
         try
         {

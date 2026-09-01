@@ -68,6 +68,17 @@ public sealed class ObjectStorageOptions
             options.LocalRoot = configuration["ObjectStorage:LocalRoot"] ?? string.Empty;
         return options;
     }
+
+    public void Validate()
+    {
+        if (Provider.Equals("local", StringComparison.OrdinalIgnoreCase)) return;
+        if (string.IsNullOrWhiteSpace(Endpoint))
+            throw new ProviderConfigurationException("ObjectStorage:Endpoint must be configured for the production object-storage provider.");
+        if (string.IsNullOrWhiteSpace(Bucket))
+            throw new ProviderConfigurationException("ObjectStorage:Bucket must be configured for the production object-storage provider.");
+        if (string.IsNullOrWhiteSpace(AccessKey) || string.IsNullOrWhiteSpace(SecretKey))
+            throw new ProviderConfigurationException("ObjectStorage:AccessKey and ObjectStorage:SecretKey must be configured for the production object-storage provider.");
+    }
 }
 
 public sealed class LocalFileObjectStorage : IObjectStorage
@@ -192,7 +203,7 @@ public sealed class RemoteHttpObjectStorage : IObjectStorage
         ValidateKey(key);
         var url = BuildObjectUrl(key);
         using var request = new HttpRequestMessage(HttpMethod.Put, url) { Content = new StreamContent(content) };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "REDACTED");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessKey);
         using var response = await _http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {

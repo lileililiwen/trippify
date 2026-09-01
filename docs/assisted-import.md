@@ -13,10 +13,10 @@ Authors need help translating and reformatting source material without giving th
 ## AI adapter contract
 
 - `IAiAssistant` accepts a typed `AiAssistRequest` (kind, source text, locales, schema version, output limits) and returns an `AiAssistResult` with status, title, nodes or body, provider/model/schema version, attempt count, and a structured failure code.
-- `AiAssistStatus` values: `Completed`, `InvalidOutput`, `ProviderUnavailable`, `Timeout`, `Disabled`. Drafts and translations are only persisted on `Completed`; every other state surfaces a retryable or terminal failure to the caller.
-- The production adapter (`HttpAiAssistant`) issues an HTTP `POST /v1/ai/assist` against a configured server-side endpoint, validates the response against the `v1` schema (`title`, `nodes[]` for drafts; `body` for translations), and retries transient transport failures with exponential backoff inside the configured timeout.
+- `AiAssistStatus` values: `Completed`, `InvalidOutput`, `ProviderUnavailable`, `Timeout`, `Disabled`. Drafts and translations are only persisted on `Completed`; every other state surfaces a retryable or terminal failure to the caller. A 401/403 from the configured provider maps to `InvalidOutput` so no draft or translation is committed.
+- The production adapter (`HttpAiAssistant`) issues an HTTP `POST /v1/ai/assist` against a configured server-side endpoint, authenticates with `Authorization: Bearer ${Ai:ApiKey}` (the configured credential, never a placeholder), validates the response against the `v1` schema (`title`, `nodes[]` for drafts; `body` for translations), and retries transient transport failures with exponential backoff inside the configured timeout. 5xx, 408, and 429 responses are retried; 401/403 are not — they are surfaced as a controlled failure.
 - Local deployments bind the `Ai:Provider` setting to `local` (default) or set `Ai:Enabled=false`. In both cases the adapter returns a `Disabled` result without echoing the source text.
-- Server-side credentials live under `Ai:ApiKey`. Client-held keys are out of scope.
+- Server-side credentials live under `Ai:ApiKey`. Client-held keys are out of scope. The API key is never logged, embedded in error responses, or returned by any endpoint.
 
 ## Draft review
 

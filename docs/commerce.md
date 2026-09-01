@@ -4,8 +4,8 @@ Paid guides are sold through authoritative, webhook-confirmed orders; access is 
 
 ## Purchase flow
 
-- `POST /api/v1/commerce/checkout { guideId, discountCode? }` validates the guide is published as `Paid`, rejects creators buying their own guide, applies an active per-guide discount code, and calls the payment gateway adapter. The adapter is selected by configuration: `Payment:Provider=local` keeps the legacy `NotSupportedException` flow used by self-hosted and tests; `Payment:Provider=http` activates `HttpPaymentGateway` (production) and validates `Payment:Endpoint`, `Payment:ApiKey`, `Payment:WebhookSecret` at startup.
-- The HTTP adapter issues `POST /v1/checkouts` to the configured payment provider, returns a typed `CheckoutSession` (`Url`, `Reference`, `AmountMinorUnits`, `CurrencyCode`), persists the order with the `ProviderReference` and `ProviderName`, and returns the checkout URL to the Flutter client. Gateway outages or rejection translate to `503 Payments are unavailable.` without persisting an order.
+- `POST /api/v1/commerce/checkout { guideId, discountCode? }` validates the guide is published as `Paid`, rejects creators buying their own guide, applies an active per-guide discount code, and calls the payment gateway adapter. The adapter is selected by configuration: `Payment:Provider=local` keeps the legacy `NotSupportedException` flow used by self-hosted and tests; `Payment:Provider=http` activates `HttpPaymentGateway` (production) and validates `Payment:Endpoint`, `Payment:ApiKey`, `Payment:WebhookSecret` at startup. The configured `Payment:ApiKey` is sent as the `Authorization: Bearer …` credential on every checkout request — placeholders, hard-coded values, or empty tokens are never accepted.
+- The HTTP adapter issues `POST /v1/checkouts` to the configured payment provider, returns a typed `CheckoutSession` (`Url`, `Reference`, `AmountMinorUnits`, `CurrencyCode`), persists the order with the `ProviderReference` and `ProviderName`, and returns the checkout URL to the Flutter client. Gateway outages, 401/403 rejections, or transport timeouts translate to `503 Payments are unavailable.` without persisting an order. The exact API key is never logged or echoed in responses.
 - Orders start `Pending`. The gateway confirms through `POST /api/v1/commerce/webhook` (anonymous route). Production webhooks are verified over the **raw request body** by `HttpPaymentGateway.VerifySignature` (HMAC-SHA256 with `v1=` prefix), keyed off `Payment:WebhookHeader`. Local/self-hosted deployments without a verifier continue to honour the legacy `X-Webhook-Secret` constant-time comparison so on-prem operators are not forced to wire an external provider.
 - Webhooks are idempotent twice over: event IDs are deduplicated in `payment_webhook_events`, and status transitions only move forward (`Pending → Paid → Refunded`). Delivering a valid webhook twice yields exactly one paid order and one entitlement.
 - Confirmation writes three ledger rows — gross, commission (rate snapshot from `Commerce:CommissionRate`, default 0.10), and creator net — so payouts reconcile even if rates change later.
@@ -25,12 +25,12 @@ Paid guides are sold through authoritative, webhook-confirmed orders; access is 
 | --- | --- |
 | `Payment:Provider` | `local` (default) keeps the on-prem disabled path; `http` activates the production adapter. |
 | `Payment:Endpoint` | Base URL for the production payment provider. Required when `Provider=http`. |
-| `Payment:ApiKey` | Server-side credential; never returned to clients. Required when `Provider=http`. |
+| `Payment:ApiKey` | Server-side credential sent as the `Authorization: Bearer …` value on every checkout request. Required when `Provider=http`. Never logged or returned to clients. |
 | `Payment:WebhookSecret` | Shared HMAC secret used by `HttpPaymentGateway.VerifySignature`. Required when `Provider=http`. |
 | `Payment:WebhookHeader` | Header name carrying the signature (default `X-Provider-Signature`). |
 | `Payment:SignatureScheme` | Prefix prepended to the signature header (default `v1`). |
 | `Payment:TimeoutMilliseconds` | HTTP timeout for provider calls (default 10 000 ms). |
-| `Payment:Enabled` | Allows temporary shutdown of paid checkout without removing credentials. |
+| `Payment:Enabled` | Allows temporary shutdown of paid checkout without removing credentials. Startup validation is skipped when `Enabled=false`; the legacy `local` provider is not affected. |
 | `Commerce:WebhookSecret` | Legacy shared secret for the local `X-Webhook-Secret` path. |
 | `Commerce:CommissionRate` | Decimal commission rate snapshotted at confirmation (default 0.10). |
 
