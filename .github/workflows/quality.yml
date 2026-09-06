@@ -25,7 +25,27 @@ jobs:
         with: { dotnet-version: 8.0.x }
       - run: dotnet restore Trippify.sln
       - run: dotnet build Trippify.sln --no-restore --configuration Release
-      - run: dotnet test Trippify.sln --no-restore --configuration Release
+      - name: Test (architecture)
+        run: dotnet test tests/Trippify.ArchitectureTests/Trippify.ArchitectureTests.csproj --no-build --configuration Release --verbosity normal
+      - name: Test & coverage (api)
+        # Coverage is gated on the API tests (currently ~92% line). The
+        # architecture tests only reflect over the assemblies and execute no
+        # source code, so they report ~0% coverage and are run without the gate.
+        run: dotnet test tests/Trippify.ApiTests/Trippify.ApiTests.csproj --no-build --configuration Release --verbosity normal
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=cobertura
+          /p:Threshold=80
+          /p:ThresholdType=line
+          /p:ThresholdStat=total
+          /p:FailOnError=true
+          /p:CoverletOutput=./coverage/coverage
+      - name: Upload dotnet coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-coverage
+          path: tests/Trippify.ApiTests/coverage/coverage.cobertura.xml
+          if-no-files-found: warn
   flutter:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/trippify_flutter } }
@@ -36,7 +56,23 @@ jobs:
       - run: flutter pub get
       - run: dart run tool/check_flutter_skips.dart
       - run: flutter analyze
-      - run: flutter test
+      - name: Test with coverage
+        run: flutter test --coverage
+      - name: Enforce Flutter coverage threshold
+        run: |
+          COV=$(awk -F'[:%]' '/^SF:/{f=$2} /^LF:/{lf+=$2} /^LH:/{lh+=$2} END{printf "%.2f", (lf ? lh * 100 / lf : 0)}' coverage/lcov.info)
+          echo "Flutter line coverage: ${COV}%"
+          OK=$(awk -v c="$COV" 'BEGIN { print (c + 0 >= 30) ? 1 : 0 }')
+          if [ "$OK" != "1" ]; then
+            echo "Flutter coverage ${COV}% is below the 30% threshold"; exit 1
+          fi
+      - name: Upload Flutter coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: apps/trippify_flutter/coverage/lcov.info
+          if-no-files-found: warn
   postgres-upgrade-drill:
     runs-on: ubuntu-latest
     services:
