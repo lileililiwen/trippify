@@ -21,7 +21,7 @@ None. The September 2026 audit backlog is fully shipped.
 `add-rendered-browser-and-release-quality-gates` is fully implemented and
 archived. The rendered browser smoke tests, Flutter skip accountability
 gate, PostgreSQL upgrade drill, provider-outage coverage, and restorable
-backup failure-mode tests are green. All eleven audit changes from the
+backup failure-mode tests are green. All nine audit changes from the
 September 2026 backlog are now in `openspec/specs/` with a related commit.
 
 ## Implementation workflow
