@@ -440,6 +440,42 @@ abstract class AppLocalizations {
   /// **'Choose how the service reaches you.'**
   String get entryNotificationPreferencesDesc;
 
+  /// No description provided for @entryPluginCatalog.
+  ///
+  /// In en, this message translates to:
+  /// **'Plugin catalog'**
+  String get entryPluginCatalog;
+
+  /// No description provided for @entryPluginCatalogDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse, install, and manage plugins.'**
+  String get entryPluginCatalogDesc;
+
+  /// No description provided for @entrySelfHostedStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-hosted status'**
+  String get entrySelfHostedStatus;
+
+  /// No description provided for @entrySelfHostedStatusDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Version, migrations, upgrades, and backups.'**
+  String get entrySelfHostedStatusDesc;
+
+  /// No description provided for @entryFindCreator.
+  ///
+  /// In en, this message translates to:
+  /// **'Find a creator'**
+  String get entryFindCreator;
+
+  /// No description provided for @entryFindCreatorDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Search public creator profiles.'**
+  String get entryFindCreatorDesc;
+
   /// No description provided for @destinationHome.
   ///
   /// In en, this message translates to:

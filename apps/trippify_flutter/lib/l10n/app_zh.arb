@@ -62,6 +62,12 @@
   "entryNotificationsDesc": "回复、二创决策与审核更新。",
   "entryNotificationPreferences": "通知偏好",
   "entryNotificationPreferencesDesc": "选择服务触达方式。",
+  "entryPluginCatalog": "插件目录",
+  "entryPluginCatalogDesc": "浏览、安装和管理插件。",
+  "entrySelfHostedStatus": "自托管状态",
+  "entrySelfHostedStatusDesc": "版本、迁移、升级和备份。",
+  "entryFindCreator": "查找创作者",
+  "entryFindCreatorDesc": "搜索公开创作者资料。",
 
   "destinationHome": "首页",
   "destinationDiscover": "发现",

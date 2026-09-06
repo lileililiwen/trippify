@@ -77,6 +77,12 @@
   "entryNotificationsDesc": "Replies, remix decisions, and reviewer updates.",
   "entryNotificationPreferences": "Notification preferences",
   "entryNotificationPreferencesDesc": "Choose how the service reaches you.",
+  "entryPluginCatalog": "Plugin catalog",
+  "entryPluginCatalogDesc": "Browse, install, and manage plugins.",
+  "entrySelfHostedStatus": "Self-hosted status",
+  "entrySelfHostedStatusDesc": "Version, migrations, upgrades, and backups.",
+  "entryFindCreator": "Find a creator",
+  "entryFindCreatorDesc": "Search public creator profiles.",
 
   "destinationHome": "Home",
   "destinationDiscover": "Discover",

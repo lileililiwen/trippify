@@ -77,21 +77,24 @@ void main() {
         isEmpty,
         reason: 'production allowlist and skip markers must remain in sync',
       );
-      expect(result.findings.length, 24);
-      expect(result.budget, 24);
+      expect(result.findings.length, 0);
+      expect(result.budget, 0);
     });
 
     test('detects when the budget is exceeded', () {
+      final testDir = Directory('${sandbox.path}/test')..createSync();
+      File('${testDir.path}/c_test.dart').writeAsStringSync(
+        "testWidgets('over budget', (tester) async {}, skip: true);\n",
+      );
       final result = checkSkips(
-        testRoot: Directory('test'),
+        testRoot: Directory(testDir.path),
         allowlist: {
-          'budget': 1,
+          'budget': 0,
           'skips': <Map<String, dynamic>>[],
         },
-        excludePaths: const ['test/skip_policy_test.dart'],
       );
       expect(
-        result.errors.any((e) => e.contains('exceed the release budget of 1')),
+        result.errors.any((e) => e.contains('exceed the release budget of 0')),
         isTrue,
       );
     });

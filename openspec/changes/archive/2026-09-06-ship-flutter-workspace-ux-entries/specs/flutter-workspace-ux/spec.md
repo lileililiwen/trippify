@@ -1,8 +1,7 @@
-# flutter-workspace-ux Specification
+# Flutter workspace UX
 
-## Purpose
-TBD - created by archiving change complete-flutter-workspace-ux. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: Authorized workflows SHALL be discoverable
 
 Each authenticated role MUST have a predictable entry point to its authorized workflows, while unauthorized capabilities MUST be hidden or clearly denied without relying on client authorization. The following entries MUST be present and reachable from the appropriate home or shell surface: a "Discover guides" home entry with the discovery → guide → author chain; planning empty-state and denied-state copy with party-size totals from the home surface; notifications and notification-preferences home entries; plugin-catalog, tenant-dashboard, assisted-import, license-policies, and self-hosted-status home entries; public-creator-search and release-history home entries; a profile entry from the signed-in shell; and guide-workspace drag-to-reorder. Each entry MUST be covered by a non-skipped test.
@@ -49,4 +48,3 @@ The authenticated shell MUST expose one consistent sign-out action with confirma
 - **When** the user selects sign out
 - **Then** local credentials are cleared
 - **And** the app returns to anonymous home with status feedback
-

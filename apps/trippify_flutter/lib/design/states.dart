@@ -279,7 +279,7 @@ class MapSurfaceView extends StatelessWidget {
     }
 
     return Container(
-      height: 200,
+      constraints: const BoxConstraints(minHeight: 200),
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(

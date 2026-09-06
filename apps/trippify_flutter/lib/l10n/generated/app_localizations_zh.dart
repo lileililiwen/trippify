@@ -187,6 +187,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get entryNotificationPreferencesDesc => '选择服务触达方式。';
 
   @override
+  String get entryPluginCatalog => '插件目录';
+
+  @override
+  String get entryPluginCatalogDesc => '浏览、安装和管理插件。';
+
+  @override
+  String get entrySelfHostedStatus => '自托管状态';
+
+  @override
+  String get entrySelfHostedStatusDesc => '版本、迁移、升级和备份。';
+
+  @override
+  String get entryFindCreator => '查找创作者';
+
+  @override
+  String get entryFindCreatorDesc => '搜索公开创作者资料。';
+
+  @override
   String get destinationHome => '首页';
 
   @override

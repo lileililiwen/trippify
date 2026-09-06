@@ -198,6 +198,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose how the service reaches you.';
 
   @override
+  String get entryPluginCatalog => 'Plugin catalog';
+
+  @override
+  String get entryPluginCatalogDesc => 'Browse, install, and manage plugins.';
+
+  @override
+  String get entrySelfHostedStatus => 'Self-hosted status';
+
+  @override
+  String get entrySelfHostedStatusDesc =>
+      'Version, migrations, upgrades, and backups.';
+
+  @override
+  String get entryFindCreator => 'Find a creator';
+
+  @override
+  String get entryFindCreatorDesc => 'Search public creator profiles.';
+
+  @override
   String get destinationHome => 'Home';
 
   @override

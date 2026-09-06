@@ -216,11 +216,12 @@ class FakeApi implements AppApi {
     String? idempotencyKey,
   }) async {
     if (routeError != null) throw routeError!;
+    final amount = discountCode != null && discountCode.toUpperCase() == 'LAUNCH25' ? 1875 : 2500;
     return CheckoutSession(
       'order-1',
       'cs_test_1',
-      'https://example.test/cs_test_1',
-      1875,
+      '',
+      amount,
       'JPY',
       'test',
     );
