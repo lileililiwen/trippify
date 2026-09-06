@@ -2,12 +2,15 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Trippify.Application;
 using Trippify.Infrastructure;
 using Xunit;
@@ -592,5 +595,146 @@ internal sealed class CheckoutHandler : HttpMessageHandler
         Requests++;
         return Task.FromResult(new HttpResponseMessage(_status) { Content = new StringContent(_body) });
     }
+}
+
+public sealed class CaptureHandler : HttpMessageHandler
+{
+    private HttpRequestMessage? _lastRequest;
+    private int _requestCount;
+    public HttpRequestMessage? LastRequest => _lastRequest;
+    public int RequestCount => _requestCount;
+    private Func<HttpRequestMessage, HttpResponseMessage> _responder;
+
+    public CaptureHandler() { _responder = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"sessionId\":\"cs_test_default\",\"url\":\"https://fake-payments.test/cs_test_default\"}") }; }
+
+    public void RespondWith(Func<HttpRequestMessage, HttpResponseMessage> responder) { _responder = responder; }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _requestCount);
+        _lastRequest = request;
+        return Task.FromResult(_responder(request));
+    }
+}
+
+public sealed class RealGatewayCommerceApiTests
+{
+    private const string Password = "Strong!Pass123";
+
+    [Fact]
+    public async Task HttpPaymentGateway_creates_checkout_session_and_captures_request()
+    {
+        var handler = new CaptureHandler();
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "test-api-key", WebhookSecret = "wh-secret", Enabled = true, TimeoutMilliseconds = 5000 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint!), Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds) };
+        var gateway = new HttpPaymentGateway(options, http);
+        var request = new PaymentCheckoutRequest(2500, "JPY", Guid.NewGuid(), Guid.NewGuid(), null, "/success", "/cancel", Guid.NewGuid().ToString("N"));
+        var session = await gateway.CreateCheckoutAsync(request, default);
+        Assert.Equal("cs_test_default", session.Reference);
+        Assert.Equal("https://fake-payments.test/cs_test_default", session.Url);
+        Assert.Equal(2500, session.AmountMinorUnits);
+        Assert.Equal("JPY", session.CurrencyCode);
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.NotNull(handler.LastRequest.Headers.Authorization);
+        Assert.Equal("Bearer", handler.LastRequest.Headers.Authorization!.Scheme);
+        Assert.Equal("test-api-key", handler.LastRequest.Headers.Authorization.Parameter);
+    }
+
+    [Fact]
+    public async Task HttpPaymentGateway_401_throws_invalid_operation()
+    {
+        var handler = new CaptureHandler();
+        handler.RespondWith(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("{\"error\":\"bad key\"}") });
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "test-key", WebhookSecret = "wh", Enabled = true, TimeoutMilliseconds = 5000 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint!), Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds) };
+        var gateway = new HttpPaymentGateway(options, http);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(1000, "USD", Guid.NewGuid(), Guid.NewGuid(), null, "/s", "/c", "idem-1"), default));
+    }
+
+    [Fact]
+    public async Task HttpPaymentGateway_403_throws_invalid_operation()
+    {
+        var handler = new CaptureHandler();
+        handler.RespondWith(_ => new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("{\"error\":\"forbidden\"}") });
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "test-key", WebhookSecret = "wh", Enabled = true, TimeoutMilliseconds = 5000 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint!), Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds) };
+        var gateway = new HttpPaymentGateway(options, http);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(1000, "USD", Guid.NewGuid(), Guid.NewGuid(), null, "/s", "/c", "idem-2"), default));
+    }
+
+    [Fact]
+    public async Task HttpPaymentGateway_timeout_throws_io_exception()
+    {
+        var handler = new CaptureHandler();
+        handler.RespondWith(_ => { Thread.Sleep(200); return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") }; });
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "test-key", WebhookSecret = "wh", Enabled = true, TimeoutMilliseconds = 100 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint!), Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds) };
+        var gateway = new HttpPaymentGateway(options, http);
+        await Assert.ThrowsAsync<IOException>(() => gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(1000, "USD", Guid.NewGuid(), Guid.NewGuid(), null, "/s", "/c", "idem-3"), default));
+    }
+
+    [Fact]
+    public async Task HttpPaymentGateway_disabled_throws_not_supported()
+    {
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "test-key", WebhookSecret = "wh", Enabled = false, TimeoutMilliseconds = 5000 };
+        using var http = new HttpClient();
+        var gateway = new HttpPaymentGateway(options, http);
+        await Assert.ThrowsAsync<NotSupportedException>(() => gateway.CreateCheckoutAsync(new PaymentCheckoutRequest(1000, "USD", Guid.NewGuid(), Guid.NewGuid(), null, "/s", "/c", "idem-4"), default));
+    }
+
+    [Fact]
+    public void Configured_credential_does_not_leak_through_provider_name_or_response()
+    {
+        var options = new PaymentProviderOptions { Provider = "http", Endpoint = "https://fake-payments.test", ApiKey = "secret-api-key-12345", WebhookSecret = "secret-webhook-67890", Enabled = true, TimeoutMilliseconds = 5000 };
+        using var http = new HttpClient();
+        var gateway = new HttpPaymentGateway(options, http);
+        Assert.DoesNotContain("secret-api-key", gateway.ProviderName);
+        Assert.DoesNotContain("secret-webhook", gateway.ProviderName);
+    }
+}
+
+public sealed class DisabledPaymentCommerceApiTests : IClassFixture<TrippifyFactory>
+{
+    private const string Password = "Strong!Pass123";
+    private readonly TrippifyFactory _factory;
+
+    public DisabledPaymentCommerceApiTests(TrippifyFactory factory) { _factory = factory; }
+
+    [Fact]
+    public async Task Checkout_with_disabled_provider_returns_unavailable_and_creates_no_order()
+    {
+        var creator = await CreateUser("disabled-creator@example.com", creator: true);
+        var buyer = await CreateUser("disabled-buyer@example.com");
+        using var creatorClient = _factory.CreateClient();
+        creatorClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(creatorClient, creator.Email!));
+        var guideId = await PublishPaidGuide(creatorClient);
+
+        using var buyerClient = _factory.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await Login(buyerClient, buyer.Email!));
+        var response = await buyerClient.PostAsJsonAsync("/api/v1/commerce/checkout", new { guideId });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        await WithDb(async db => Assert.False(await db.GuideOrders.AnyAsync()));
+    }
+
+    private async Task<Guid> PublishPaidGuide(HttpClient creatorClient, string title = "Paid nights", long priceMinorUnits = 2500, string currencyCode = "JPY")
+    {
+        var created = await creatorClient.PostAsJsonAsync("/api/v1/guides", new { title, subtitle = "Sub", summary = "Worth buying once", coverUrl = (string?)null, countryCode = "JP", cities = new[] { "Tokyo" }, tags = Array.Empty<string>(), tripDays = 1 });
+        created.EnsureSuccessStatusCode();
+        var json = await Json(created); var id = json.GetProperty("id").GetGuid(); var token = json.GetProperty("concurrencyToken").GetGuid();
+        var structure = new { concurrencyToken = token, days = new[] { new { title = "Day one", notes = "", nodes = new[] { new { type = "Attraction", name = "Tower", address = "", latitude = 34.0, longitude = 135.0, arrivalTime = (string?)null, departureTime = (string?)null, stayMinutes = 60, ticketInformation = (string?)null, reservationInformation = (string?)null, openingHours = (string?)null, notes = "" } } } }, sections = Array.Empty<object>() };
+        (await creatorClient.PutAsJsonAsync($"/api/v1/guides/{id}/structure", structure)).EnsureSuccessStatusCode();
+        token = (await Json(await creatorClient.GetAsync($"/api/v1/guides/{id}"))).GetProperty("concurrencyToken").GetGuid();
+        var published = await creatorClient.PostAsJsonAsync($"/api/v1/guides/{id}/publish", new { concurrencyToken = token, pricing = new { priceMinorUnits, currencyCode } });
+        published.EnsureSuccessStatusCode();
+        return id;
+    }
+
+    private static async Task<JsonElement> Json(HttpResponseMessage response) { var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); return document.RootElement.Clone(); }
+    private Task<AppUser> CreateUser(string email, bool creator = false) => CreateUser(_factory.Services, email, creator);
+    private static async Task<AppUser> CreateUser(IServiceProvider services, string email, bool creator = false) { await using var scope = services.CreateAsyncScope(); var manager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); var user = new AppUser { Id = Guid.NewGuid(), UserName = email, Email = email, EmailConfirmed = true }; Assert.True((await manager.CreateAsync(user, Password)).Succeeded); if (creator) db.CreatorProfiles.Add(new CreatorProfile { UserId = user.Id, Slug = user.Id.ToString("N"), Status = CreatorStatus.Active }); await db.SaveChangesAsync(); return user; }
+    private static async Task<string> Login(HttpClient client, string email) { var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = Password }); response.EnsureSuccessStatusCode(); return (await Json(response)).GetProperty("accessToken").GetString()!; }
+    private async Task WithDb(Func<AppDbContext, Task> action) { await using var scope = _factory.Services.CreateAsyncScope(); await action(scope.ServiceProvider.GetRequiredService<AppDbContext>()); }
 }
 

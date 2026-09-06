@@ -1,8 +1,7 @@
-# production-payment-processing Specification
+# production-payment-processing
 
-## Purpose
-TBD - created by archiving change integrate-production-payment-gateway. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: Provider-hosted checkout
 
 The system SHALL create a real provider-hosted checkout session for an eligible paid-guide purchase and SHALL persist an order only after the provider accepts session creation. The checkout gateway (`IPaymentGateway`) MUST resolve to the configured HTTP provider gateway when the payment provider is enabled and not in local mode, and MUST NOT be the disabled local gateway through the production checkout path. When the provider is disabled, local, or unavailable, checkout MUST return a controlled unavailable result and MUST NOT create an order, entitlement, or ledger entry.
@@ -31,15 +30,3 @@ The system SHALL create a real provider-hosted checkout session for an eligible 
 - **WHEN** the API host starts
 - **THEN** startup fails with a configuration error identifying the disabled payment provider
 - **AND** the host does not silently serve the throwing local gateway
-
-### Requirement: Authoritative payment events
-The system SHALL verify provider signatures and process each payment event idempotently before granting or revoking access.
-
-#### Scenario: A signed paid event is replayed
-- **WHEN** the same valid paid event is delivered more than once
-- **THEN** exactly one paid order, entitlement, and set of ledger entries exists
-
-#### Scenario: A webhook signature is invalid
-- **WHEN** a webhook fails provider signature verification
-- **THEN** it is rejected without recording an event or changing commerce state
-

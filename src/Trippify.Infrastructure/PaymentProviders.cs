@@ -37,10 +37,20 @@ public sealed class PaymentProviderOptions
         return options;
     }
 
-    public void Validate()
+    public void Validate(string? environment = null)
     {
-        if (Provider.Equals("local", StringComparison.OrdinalIgnoreCase)) return;
-        if (!Enabled) return;
+        if (Provider.Equals("local", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase) || string.Equals(environment, "Staging", StringComparison.OrdinalIgnoreCase))
+                throw new ProviderConfigurationException("Payment:Provider must not be 'local' in Staging or Production.");
+            return;
+        }
+        if (!Enabled)
+        {
+            if (string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase) || string.Equals(environment, "Staging", StringComparison.OrdinalIgnoreCase))
+                throw new ProviderConfigurationException("Payment:Enabled must not be false in Staging or Production.");
+            return;
+        }
         if (string.IsNullOrWhiteSpace(Endpoint))
             throw new ProviderConfigurationException("Payment:Endpoint must be configured for the production payment provider.");
         if (string.IsNullOrWhiteSpace(ApiKey))
